@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { getDocuments } from "@/lib/document-store";
 
 type ChatRequest = {
   messages?: Array<{
@@ -9,6 +10,34 @@ type ChatRequest = {
 };
 
 const model = "gpt-4o-mini";
+const maxContextChunks = 3;
+
+function buildSystemPrompt() {
+  const documents = getDocuments();
+
+  if (documents.length === 0) {
+    return "You are a concise, helpful AI assistant for a local assistant MVP.";
+  }
+
+  const documentContext = documents
+    .flatMap((document, documentIndex) =>
+      document.chunks.slice(0, maxContextChunks).map(
+        (chunk, chunkIndex) =>
+          `Document ${documentIndex + 1}: ${document.name}, chunk ${
+            chunkIndex + 1
+          }\n${chunk}`
+      )
+    )
+    .join("\n\n---\n\n");
+
+  return `You are a concise, helpful AI assistant for a local assistant MVP.
+
+Use the uploaded document context when it is relevant to the user's question.
+If the answer is not in the uploaded document context, say so.
+
+Uploaded document context:
+${documentContext}`;
+}
 
 export async function POST(request: Request) {
   if (!process.env.OPENAI_API_KEY) {
@@ -45,8 +74,7 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "system",
-          content:
-            "You are a concise, helpful AI assistant for a local assistant MVP."
+          content: buildSystemPrompt()
         },
         ...messages.map(
           (message): ChatCompletionMessageParam => ({

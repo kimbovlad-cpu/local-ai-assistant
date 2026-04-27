@@ -30,7 +30,8 @@ export async function POST(request: Request) {
     document: {
       id: document.id,
       name: document.name,
-      characterCount: document.text.length
+      characterCount: document.characterCount,
+      chunkCount: document.chunks.length
     },
     documentCount: getDocuments().length
   });
