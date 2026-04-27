@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 type Role = "assistant" | "user";
 
@@ -23,11 +24,16 @@ export function Chat() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(
     () => input.trim().length > 0 && !isSending,
     [input, isSending]
   );
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,9 +134,14 @@ export function Chat() {
             <span className="message-role">
               {message.role === "assistant" ? "Assistant" : "You"}
             </span>
-            <p>{message.content}</p>
+            {message.role === "assistant" ? (
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            ) : (
+              <p>{message.content}</p>
+            )}
           </article>
         ))}
+        <div ref={bottomRef} />
       </div>
 
       {error ? <p className="error-message">{error}</p> : null}
