@@ -70,13 +70,17 @@ export function Chat() {
         throw new Error("The chat API returned an error.");
       }
 
+      if (!response.body) {
+        throw new Error("The chat API did not return a response stream.");
+      }
+
       const assistantId = crypto.randomUUID();
       setMessages((current) => [
         ...current,
         { id: assistantId, role: "assistant", content: "" }
       ]);
 
-      const reader = response.body!.getReader();
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
       while (true) {
@@ -87,6 +91,17 @@ export function Chat() {
           current.map((msg) =>
             msg.id === assistantId
               ? { ...msg, content: msg.content + chunk }
+              : msg
+          )
+        );
+      }
+
+      const remainingText = decoder.decode();
+      if (remainingText) {
+        setMessages((current) =>
+          current.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, content: msg.content + remainingText }
               : msg
           )
         );

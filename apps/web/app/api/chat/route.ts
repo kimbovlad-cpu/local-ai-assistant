@@ -67,8 +67,10 @@ export async function POST(request: Request) {
               controller.enqueue(encoder.encode(delta));
             }
           }
-        } finally {
           controller.close();
+        } catch (streamError) {
+          console.error("OpenAI chat stream failed", streamError);
+          controller.error(streamError);
         }
       }
     });
