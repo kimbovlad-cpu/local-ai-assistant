@@ -9,7 +9,7 @@ export default function Home() {
             <p className="eyebrow">Local AI Assistant</p>
             <h1>Chat</h1>
           </div>
-          <span className="status-pill">Mock API</span>
+          <span className="status-pill">OpenAI</span>
         </header>
         <Chat />
       </section>

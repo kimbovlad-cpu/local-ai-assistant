@@ -14,7 +14,7 @@ const initialMessages: Message[] = [
   {
     id: "welcome",
     role: "assistant",
-    content: "Ask me anything. I am wired to a mock response for now."
+    content: "Ask me anything."
   }
 ];
 
@@ -49,31 +49,48 @@ export function Chat() {
     setError(null);
 
     try {
+      const requestMessages = [...messages, userMessage].map(
+        ({ role, content }) => ({
+          role,
+          content
+        })
+      );
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage].map(({ role, content }) => ({
-            role,
-            content
-          }))
+          messages: requestMessages
         })
       });
 
       if (!response.ok) {
-        throw new Error("The mock chat API returned an error.");
+        throw new Error("The chat API returned an error.");
       }
 
-      const data = (await response.json()) as { message: string };
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.message
-      };
+      const assistantId = crypto.randomUUID();
+      setMessages((current) => [
+        ...current,
+        { id: assistantId, role: "assistant", content: "" }
+      ]);
 
-      setMessages((current) => [...current, assistantMessage]);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        setMessages((current) =>
+          current.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, content: msg.content + chunk }
+              : msg
+          )
+        );
+      }
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -99,12 +116,6 @@ export function Chat() {
             <p>{message.content}</p>
           </article>
         ))}
-        {isSending ? (
-          <article className="message message-assistant">
-            <span className="message-role">Assistant</span>
-            <p>Thinking...</p>
-          </article>
-        ) : null}
       </div>
 
       {error ? <p className="error-message">{error}</p> : null}
