@@ -5,3 +5,7 @@ node_modules
 dist
 __pycache__
 *.log
+.env.local
+.env
+.env.local
+.env
