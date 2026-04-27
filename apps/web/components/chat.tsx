@@ -23,7 +23,10 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(
@@ -34,6 +37,56 @@ export function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const file = fileInputRef.current?.files?.[0];
+    setUploadStatus(null);
+
+    if (!file) {
+      setUploadStatus("Choose a .txt file to upload.");
+      return;
+    }
+
+    if (file.type !== "text/plain" && !file.name.toLowerCase().endsWith(".txt")) {
+      setUploadStatus("Only .txt files are supported.");
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const text = await file.text();
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: file.name,
+          text
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Document upload failed.");
+      }
+
+      setUploadStatus(`Uploaded ${file.name}.`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (caughtError) {
+      setUploadStatus(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Document upload failed."
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -125,6 +178,23 @@ export function Chat() {
 
   return (
     <div className="chat">
+      <form className="document-upload" onSubmit={handleDocumentUpload}>
+        <label htmlFor="document-input">Document</label>
+        <input
+          accept=".txt,text/plain"
+          disabled={isUploading}
+          id="document-input"
+          name="document"
+          ref={fileInputRef}
+          type="file"
+        />
+        <button disabled={isUploading} type="submit">
+          {isUploading ? "Uploading..." : "Upload"}
+        </button>
+      </form>
+
+      {uploadStatus ? <p className="upload-message">{uploadStatus}</p> : null}
+
       <div className="message-list" aria-live="polite">
         {messages.map((message) => (
           <article
