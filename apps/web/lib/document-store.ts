@@ -7,6 +7,8 @@ export type UploadedDocument = {
 };
 
 export type DocumentChunk = {
+  documentName: string;
+  chunkIndex: number;
   text: string;
   embedding: number[];
 };
@@ -70,6 +72,8 @@ export function addDocument(
     id: crypto.randomUUID(),
     name,
     chunks: textChunks.map((chunk, index) => ({
+      documentName: name,
+      chunkIndex: index,
       text: chunk,
       embedding: chunkEmbeddings[index]
     })),
@@ -97,7 +101,7 @@ export function retrieveRelevantChunks(queryEmbedding: number[]) {
         return {
           documentName: document.name,
           documentIndex,
-          chunkIndex,
+          chunkIndex: chunk.chunkIndex,
           content: chunk.text,
           score: cosineSimilarity(queryEmbedding, chunk.embedding)
         };

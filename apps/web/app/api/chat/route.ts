@@ -33,18 +33,18 @@ If the answer is not in the uploaded document context, say so.`;
   const documentContext = retrievedChunks
     .map(
       (chunk) =>
-        `Document ${chunk.documentIndex + 1}: ${chunk.documentName}, chunk ${
-          chunk.chunkIndex + 1
-        }\n${chunk.content}`
+        `[Source: ${chunk.documentName}, chunk ${chunk.chunkIndex + 1}]
+${chunk.content}`
     )
     .join("\n\n---\n\n");
 
   return `You are a concise, helpful AI assistant for a local assistant MVP.
 
-Use the uploaded document context when it is relevant to the user's question.
-If the answer is not in the uploaded document context, say so.
+Answer using the retrieved sources.
+At the end, include a short Sources section listing the filenames and chunks used.
+If the answer is not supported by the retrieved sources, say so.
 
-Uploaded document context:
+Retrieved sources:
 ${documentContext}`;
 }
 
