@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { addDocument, chunkText, getDocuments } from "@/lib/document-store";
+import { chunkText, storeDocumentChunks } from "@/lib/document-store";
 
 type DocumentRequest = {
   name?: string;
@@ -14,6 +14,16 @@ export async function POST(request: Request) {
       {
         error:
           "OPENAI_API_KEY is not configured. Add it before uploading documents so chunks can be embedded."
+      },
+      { status: 500 }
+    );
+  }
+
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    return Response.json(
+      {
+        error:
+          "SUPABASE_URL and SUPABASE_ANON_KEY are not configured. Add them before uploading documents."
       },
       { status: 500 }
     );
@@ -52,22 +62,20 @@ export async function POST(request: Request) {
       .sort((a, b) => a.index - b.index)
       .map((item) => item.embedding);
 
-    const document = addDocument(name, text, embeddings);
+    await storeDocumentChunks(name, chunks, embeddings);
 
     return Response.json({
       document: {
-        id: document.id,
-        name: document.name,
-        characterCount: document.characterCount,
-        chunkCount: document.chunks.length
-      },
-      documentCount: getDocuments().length
+        name,
+        characterCount: text.length,
+        chunkCount: chunks.length
+      }
     });
   } catch (error) {
-    console.error("OpenAI document embedding failed", error);
+    console.error("Document upload failed", error);
 
     return Response.json(
-      { error: "Failed to create embeddings for the uploaded document." },
+      { error: "Failed to embed and store the uploaded document." },
       { status: 502 }
     );
   }

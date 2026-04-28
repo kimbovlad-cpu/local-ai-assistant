@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import {
-  getDocuments,
   retrieveRelevantChunks,
   type RetrievedChunk
 } from "@/lib/document-store";
@@ -17,23 +16,17 @@ const model = "gpt-4o-mini";
 const embeddingModel = "text-embedding-3-small";
 
 function buildSystemPrompt(retrievedChunks: RetrievedChunk[]) {
-  const documents = getDocuments();
-
-  if (documents.length === 0) {
-    return "You are a concise, helpful AI assistant for a local assistant MVP.";
-  }
-
   if (retrievedChunks.length === 0) {
     return `You are a concise, helpful AI assistant for a local assistant MVP.
 
-The user has uploaded documents, but no document chunks are available for the user's latest question.
-If the answer is not in the uploaded document context, say so.`;
+No retrieved sources were found for the user's latest question.
+If the answer is not supported by retrieved sources, say so.`;
   }
 
   const documentContext = retrievedChunks
     .map(
       (chunk) =>
-        `[Source: ${chunk.documentName}, chunk ${chunk.chunkIndex + 1}]
+        `[Source: ${chunk.documentName}, chunk ${chunk.chunkIndex}]
 ${chunk.content}`
     )
     .join("\n\n---\n\n");
@@ -52,6 +45,16 @@ export async function POST(request: Request) {
   if (!process.env.OPENAI_API_KEY) {
     return new Response(
       JSON.stringify({ error: "OPENAI_API_KEY is not configured." }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "SUPABASE_URL and SUPABASE_ANON_KEY are not configured. Add them before chatting with documents."
+      }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -80,16 +83,12 @@ export async function POST(request: Request) {
   });
 
   try {
-    let retrievedChunks: RetrievedChunk[] = [];
-
-    if (getDocuments().length > 0) {
-      const embeddingResponse = await openai.embeddings.create({
-        model: embeddingModel,
-        input: latestUserMessage?.content.trim() ?? ""
-      });
-      const queryEmbedding = embeddingResponse.data[0]?.embedding ?? [];
-      retrievedChunks = retrieveRelevantChunks(queryEmbedding);
-    }
+    const embeddingResponse = await openai.embeddings.create({
+      model: embeddingModel,
+      input: latestUserMessage?.content.trim() ?? ""
+    });
+    const queryEmbedding = embeddingResponse.data[0]?.embedding ?? [];
+    const retrievedChunks = await retrieveRelevantChunks(queryEmbedding);
 
     const stream = await openai.chat.completions.create({
       model,
