@@ -1,6 +1,10 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { getDocuments, retrieveRelevantChunks } from "@/lib/document-store";
+import {
+  getDocuments,
+  retrieveRelevantChunks,
+  type RetrievedChunk
+} from "@/lib/document-store";
 
 type ChatRequest = {
   messages?: Array<{
@@ -10,20 +14,19 @@ type ChatRequest = {
 };
 
 const model = "gpt-4o-mini";
+const embeddingModel = "text-embedding-3-small";
 
-function buildSystemPrompt(query: string) {
+function buildSystemPrompt(retrievedChunks: RetrievedChunk[]) {
   const documents = getDocuments();
 
   if (documents.length === 0) {
     return "You are a concise, helpful AI assistant for a local assistant MVP.";
   }
 
-  const retrievedChunks = retrieveRelevantChunks(query);
-
   if (retrievedChunks.length === 0) {
     return `You are a concise, helpful AI assistant for a local assistant MVP.
 
-The user has uploaded documents, but no document chunks matched the user's latest question.
+The user has uploaded documents, but no document chunks are available for the user's latest question.
 If the answer is not in the uploaded document context, say so.`;
   }
 
@@ -77,13 +80,24 @@ export async function POST(request: Request) {
   });
 
   try {
+    let retrievedChunks: RetrievedChunk[] = [];
+
+    if (getDocuments().length > 0) {
+      const embeddingResponse = await openai.embeddings.create({
+        model: embeddingModel,
+        input: latestUserMessage?.content.trim() ?? ""
+      });
+      const queryEmbedding = embeddingResponse.data[0]?.embedding ?? [];
+      retrievedChunks = retrieveRelevantChunks(queryEmbedding);
+    }
+
     const stream = await openai.chat.completions.create({
       model,
       stream: true,
       messages: [
         {
           role: "system",
-          content: buildSystemPrompt(latestUserMessage?.content ?? "")
+          content: buildSystemPrompt(retrievedChunks)
         },
         ...messages.map(
           (message): ChatCompletionMessageParam => ({

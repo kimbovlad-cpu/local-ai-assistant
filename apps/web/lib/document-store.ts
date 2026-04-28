@@ -1,9 +1,14 @@
 export type UploadedDocument = {
   id: string;
   name: string;
-  chunks: string[];
+  chunks: DocumentChunk[];
   characterCount: number;
   uploadedAt: string;
+};
+
+export type DocumentChunk = {
+  text: string;
+  embedding: number[];
 };
 
 export type RetrievedChunk = {
@@ -18,13 +23,7 @@ const chunkSize = 800;
 const maxRetrievedChunks = 3;
 const documents: UploadedDocument[] = [];
 
-function tokenize(text: string) {
-  return text
-    .toLowerCase()
-    .match(/[a-z0-9]+/g) ?? [];
-}
-
-function chunkText(text: string) {
+export function chunkText(text: string) {
   const chunks: string[] = [];
 
   for (let index = 0; index < text.length; index += chunkSize) {
@@ -34,11 +33,46 @@ function chunkText(text: string) {
   return chunks;
 }
 
-export function addDocument(name: string, text: string) {
+function cosineSimilarity(a: number[], b: number[]) {
+  if (a.length !== b.length || a.length === 0) {
+    return 0;
+  }
+
+  let dotProduct = 0;
+  let aMagnitude = 0;
+  let bMagnitude = 0;
+
+  for (let index = 0; index < a.length; index += 1) {
+    dotProduct += a[index] * b[index];
+    aMagnitude += a[index] * a[index];
+    bMagnitude += b[index] * b[index];
+  }
+
+  if (aMagnitude === 0 || bMagnitude === 0) {
+    return 0;
+  }
+
+  return dotProduct / (Math.sqrt(aMagnitude) * Math.sqrt(bMagnitude));
+}
+
+export function addDocument(
+  name: string,
+  text: string,
+  chunkEmbeddings: number[][]
+) {
+  const textChunks = chunkText(text);
+
+  if (textChunks.length !== chunkEmbeddings.length) {
+    throw new Error("Each document chunk must have a matching embedding.");
+  }
+
   const document: UploadedDocument = {
     id: crypto.randomUUID(),
     name,
-    chunks: chunkText(text),
+    chunks: textChunks.map((chunk, index) => ({
+      text: chunk,
+      embedding: chunkEmbeddings[index]
+    })),
     characterCount: text.length,
     uploadedAt: new Date().toISOString()
   };
@@ -52,35 +86,23 @@ export function getDocuments() {
   return documents;
 }
 
-export function retrieveRelevantChunks(query: string) {
-  const queryKeywords = new Set(tokenize(query));
-
-  if (queryKeywords.size === 0) {
+export function retrieveRelevantChunks(queryEmbedding: number[]) {
+  if (queryEmbedding.length === 0) {
     return [];
   }
 
   return documents
     .flatMap((document, documentIndex) =>
       document.chunks.map((chunk, chunkIndex): RetrievedChunk => {
-        const chunkKeywords = new Set(tokenize(chunk));
-        let score = 0;
-
-        for (const keyword of queryKeywords) {
-          if (chunkKeywords.has(keyword)) {
-            score += 1;
-          }
-        }
-
         return {
           documentName: document.name,
           documentIndex,
           chunkIndex,
-          content: chunk,
-          score
+          content: chunk.text,
+          score: cosineSimilarity(queryEmbedding, chunk.embedding)
         };
       })
     )
-    .filter((chunk) => chunk.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, maxRetrievedChunks);
 }
