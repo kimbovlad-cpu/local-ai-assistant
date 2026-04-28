@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { getDocuments } from "@/lib/document-store";
+import { getDocuments, retrieveRelevantChunks } from "@/lib/document-store";
 
 type ChatRequest = {
   messages?: Array<{
@@ -10,23 +10,29 @@ type ChatRequest = {
 };
 
 const model = "gpt-4o-mini";
-const maxContextChunks = 3;
 
-function buildSystemPrompt() {
+function buildSystemPrompt(query: string) {
   const documents = getDocuments();
 
   if (documents.length === 0) {
     return "You are a concise, helpful AI assistant for a local assistant MVP.";
   }
 
-  const documentContext = documents
-    .flatMap((document, documentIndex) =>
-      document.chunks.slice(0, maxContextChunks).map(
-        (chunk, chunkIndex) =>
-          `Document ${documentIndex + 1}: ${document.name}, chunk ${
-            chunkIndex + 1
-          }\n${chunk}`
-      )
+  const retrievedChunks = retrieveRelevantChunks(query);
+
+  if (retrievedChunks.length === 0) {
+    return `You are a concise, helpful AI assistant for a local assistant MVP.
+
+The user has uploaded documents, but no document chunks matched the user's latest question.
+If the answer is not in the uploaded document context, say so.`;
+  }
+
+  const documentContext = retrievedChunks
+    .map(
+      (chunk) =>
+        `Document ${chunk.documentIndex + 1}: ${chunk.documentName}, chunk ${
+          chunk.chunkIndex + 1
+        }\n${chunk.content}`
     )
     .join("\n\n---\n\n");
 
@@ -55,6 +61,9 @@ export async function POST(request: Request) {
       message.content.trim().length > 0
   );
   const hasUserMessage = messages.some((message) => message.role === "user");
+  const latestUserMessage = messages.findLast(
+    (message) => message.role === "user"
+  );
 
   if (!hasUserMessage) {
     return new Response(
@@ -74,7 +83,7 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "system",
-          content: buildSystemPrompt()
+          content: buildSystemPrompt(latestUserMessage?.content ?? "")
         },
         ...messages.map(
           (message): ChatCompletionMessageParam => ({
