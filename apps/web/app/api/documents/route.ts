@@ -1,5 +1,11 @@
 import OpenAI from "openai";
-import { chunkText, storeDocumentChunks } from "@/lib/document-store";
+import {
+  chunkText,
+  createDocument,
+  deleteDocument,
+  listDocuments,
+  storeDocumentChunks
+} from "@/lib/document-store";
 
 type DocumentRequest = {
   name?: string;
@@ -7,6 +13,30 @@ type DocumentRequest = {
 };
 
 const embeddingModel = "text-embedding-3-small";
+
+export async function GET() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    return Response.json(
+      {
+        error:
+          "SUPABASE_URL and SUPABASE_ANON_KEY are not configured. Add them before listing documents."
+      },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const documents = await listDocuments();
+    return Response.json({ documents });
+  } catch (error) {
+    console.error("Document list failed", error);
+
+    return Response.json(
+      { error: "Failed to load uploaded documents." },
+      { status: 502 }
+    );
+  }
+}
 
 export async function POST(request: Request) {
   if (!process.env.OPENAI_API_KEY) {
@@ -62,10 +92,12 @@ export async function POST(request: Request) {
       .sort((a, b) => a.index - b.index)
       .map((item) => item.embedding);
 
-    await storeDocumentChunks(name, chunks, embeddings);
+    const document = await createDocument(name);
+    await storeDocumentChunks(document, chunks, embeddings);
 
     return Response.json({
       document: {
+        id: document.id,
         name,
         characterCount: text.length,
         chunkCount: chunks.length
@@ -76,6 +108,40 @@ export async function POST(request: Request) {
 
     return Response.json(
       { error: "Failed to embed and store the uploaded document." },
+      { status: 502 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    return Response.json(
+      {
+        error:
+          "SUPABASE_URL and SUPABASE_ANON_KEY are not configured. Add them before deleting documents."
+      },
+      { status: 500 }
+    );
+  }
+
+  const url = new URL(request.url);
+  const id = url.searchParams.get("id")?.trim();
+
+  if (!id) {
+    return Response.json(
+      { error: "Document id is required." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    await deleteDocument(id);
+    return Response.json({ ok: true });
+  } catch (error) {
+    console.error("Document delete failed", error);
+
+    return Response.json(
+      { error: "Failed to delete document." },
       { status: 502 }
     );
   }

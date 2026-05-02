@@ -1,7 +1,14 @@
 create extension if not exists vector;
 
+create table if not exists documents (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists document_chunks (
   id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references documents(id) on delete cascade,
   document_name text not null,
   chunk_index integer not null,
   content text not null,
@@ -9,12 +16,19 @@ create table if not exists document_chunks (
   created_at timestamptz not null default now()
 );
 
+create index if not exists document_chunks_document_id_idx
+  on document_chunks(document_id);
+
+create index if not exists documents_created_at_idx
+  on documents(created_at desc);
+
 create or replace function match_document_chunks(
   query_embedding vector(1536),
   match_count int default 3
 )
 returns table (
   id uuid,
+  document_id uuid,
   document_name text,
   chunk_index integer,
   content text,
@@ -25,6 +39,7 @@ stable
 as $$
   select
     document_chunks.id,
+    document_chunks.document_id,
     document_chunks.document_name,
     document_chunks.chunk_index,
     document_chunks.content,

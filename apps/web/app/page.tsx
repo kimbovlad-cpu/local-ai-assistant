@@ -7,9 +7,9 @@ export default function Home() {
         <header className="chat-header">
           <div>
             <p className="eyebrow">Local AI Assistant</p>
-            <h1>Chat</h1>
+            <h1>Assistant</h1>
           </div>
-          <span className="status-pill">OpenAI</span>
+          <span className="status-pill">RAG</span>
         </header>
         <Chat />
       </section>

@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import ReactMarkdown from "react-markdown";
 
 type Role = "assistant" | "user";
@@ -9,6 +16,12 @@ type Message = {
   id: string;
   role: Role;
   content: string;
+};
+
+type StoredDocument = {
+  id: string;
+  name: string;
+  createdAt: string;
 };
 
 const initialMessages: Message[] = [
@@ -24,8 +37,12 @@ export function Chat() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<StoredDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -34,9 +51,46 @@ export function Chat() {
     [input, isSending]
   );
 
+  const loadDocuments = useCallback(async () => {
+    try {
+      const response = await fetch("/api/documents");
+      if (!response.ok) {
+        return;
+      }
+
+      const body = (await response.json()) as {
+        documents?: StoredDocument[];
+      };
+      setDocuments(body.documents ?? []);
+    } catch {
+      setDocuments([]);
+    }
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    fetch("/api/documents")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { documents?: StoredDocument[] } | null) => {
+        if (!ignore) {
+          setDocuments(body?.documents ?? []);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setDocuments([]);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,6 +128,7 @@ export function Chat() {
       }
 
       setUploadStatus(`Uploaded ${file.name}.`);
+      await loadDocuments();
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -85,6 +140,35 @@ export function Chat() {
       );
     } finally {
       setIsUploading(false);
+    }
+  }
+
+  async function handleDocumentDelete(document: StoredDocument) {
+    setUploadStatus(null);
+    setDeletingDocumentId(document.id);
+
+    try {
+      const response = await fetch(
+        `/api/documents?id=${encodeURIComponent(document.id)}`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Document delete failed.");
+      }
+
+      setUploadStatus(`Deleted ${document.name}.`);
+      await loadDocuments();
+    } catch (caughtError) {
+      setUploadStatus(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Document delete failed."
+      );
+    } finally {
+      setDeletingDocumentId(null);
     }
   }
 
@@ -178,59 +262,97 @@ export function Chat() {
 
   return (
     <div className="chat">
-      <form className="document-upload" onSubmit={handleDocumentUpload}>
-        <label htmlFor="document-input">Document</label>
-        <input
-          accept=".txt,text/plain"
-          disabled={isUploading}
-          id="document-input"
-          name="document"
-          ref={fileInputRef}
-          type="file"
-        />
-        <button disabled={isUploading} type="submit">
-          {isUploading ? "Uploading..." : "Upload"}
-        </button>
-      </form>
+      <section className="admin-section" aria-label="Admin knowledge base">
+        <div className="section-heading">
+          <p className="section-kicker">Admin</p>
+          <h2>Knowledge Base</h2>
+        </div>
 
-      {uploadStatus ? <p className="upload-message">{uploadStatus}</p> : null}
+        <form className="document-upload" onSubmit={handleDocumentUpload}>
+          <label htmlFor="document-input">Document</label>
+          <input
+            accept=".txt,text/plain"
+            disabled={isUploading}
+            id="document-input"
+            name="document"
+            ref={fileInputRef}
+            type="file"
+          />
+          <button disabled={isUploading} type="submit">
+            {isUploading ? "Uploading..." : "Upload"}
+          </button>
+        </form>
 
-      <div className="message-list" aria-live="polite">
-        {messages.map((message) => (
-          <article
-            className={`message message-${message.role}`}
-            key={message.id}
-          >
-            <span className="message-role">
-              {message.role === "assistant" ? "Assistant" : "You"}
-            </span>
-            {message.role === "assistant" ? (
-              <ReactMarkdown>{message.content}</ReactMarkdown>
-            ) : (
-              <p>{message.content}</p>
-            )}
-          </article>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+        {uploadStatus ? <p className="upload-message">{uploadStatus}</p> : null}
 
-      {error ? <p className="error-message">{error}</p> : null}
+        <div className="document-list" aria-label="Uploaded documents">
+          <p>Documents</p>
+          {documents.length > 0 ? (
+            <ul>
+              {documents.map((document) => (
+                <li key={document.id}>
+                  <span>{document.name}</span>
+                  <button
+                    disabled={deletingDocumentId === document.id}
+                    onClick={() => void handleDocumentDelete(document)}
+                    type="button"
+                  >
+                    {deletingDocumentId === document.id
+                      ? "Deleting..."
+                      : "Delete"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span>No documents uploaded.</span>
+          )}
+        </div>
+      </section>
 
-      <form className="chat-form" onSubmit={handleSubmit}>
-        <label className="sr-only" htmlFor="chat-input">
-          Message
-        </label>
-        <input
-          id="chat-input"
-          name="message"
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Type a message..."
-          value={input}
-        />
-        <button disabled={!canSend} type="submit">
-          Send
-        </button>
-      </form>
+      <section className="public-section" aria-label="Public chatbot">
+        <div className="section-heading">
+          <p className="section-kicker">Public</p>
+          <h2>Chatbot</h2>
+        </div>
+
+        <div className="message-list" aria-live="polite">
+          {messages.map((message) => (
+            <article
+              className={`message message-${message.role}`}
+              key={message.id}
+            >
+              <span className="message-role">
+                {message.role === "assistant" ? "Assistant" : "You"}
+              </span>
+              {message.role === "assistant" ? (
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              ) : (
+                <p>{message.content}</p>
+              )}
+            </article>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+
+        {error ? <p className="error-message">{error}</p> : null}
+
+        <form className="chat-form" onSubmit={handleSubmit}>
+          <label className="sr-only" htmlFor="chat-input">
+            Message
+          </label>
+          <input
+            id="chat-input"
+            name="message"
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="Type a message..."
+            value={input}
+          />
+          <button disabled={!canSend} type="submit">
+            Send
+          </button>
+        </form>
+      </section>
     </div>
   );
 }

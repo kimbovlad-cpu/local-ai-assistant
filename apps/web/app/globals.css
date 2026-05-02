@@ -95,6 +95,45 @@ h1 {
   flex-direction: column;
 }
 
+.admin-section,
+.public-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-section {
+  border-bottom: 1px solid var(--panel-border);
+  background: #fbfaf7;
+}
+
+.public-section {
+  min-height: 0;
+  flex: 1;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 0;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.section-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .message-list {
   display: flex;
   min-height: 0;
@@ -109,7 +148,6 @@ h1 {
   display: flex;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--panel-border);
   padding: 12px 16px;
 }
 
@@ -146,10 +184,68 @@ h1 {
 
 .upload-message {
   margin: 0;
-  border-bottom: 1px solid var(--panel-border);
   color: var(--muted);
   font-size: 0.9rem;
-  padding: 8px 16px;
+  padding: 0 16px 10px;
+}
+
+.document-list {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  padding: 0 16px 14px;
+}
+
+.document-list p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.document-list ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.document-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: #fbfaf7;
+  color: var(--text);
+  padding: 4px 8px;
+}
+
+.document-list li span {
+  overflow-wrap: anywhere;
+}
+
+.document-list button {
+  border: 1px solid #e0b6b0;
+  border-radius: 8px;
+  background: #fff7f6;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 28px;
+  padding: 0 8px;
+}
+
+.document-list button:hover:not(:disabled) {
+  background: #ffe9e6;
+}
+
+.document-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .message {
@@ -263,6 +359,11 @@ h1 {
   }
 
   .document-upload {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .document-list {
     align-items: stretch;
     flex-direction: column;
   }
