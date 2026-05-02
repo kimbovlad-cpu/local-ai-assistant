@@ -43,8 +43,8 @@ export function chunkText(text: string) {
   return chunks;
 }
 
-export async function createDocument(name: string) {
-  const supabase = createSupabaseServerClient();
+export async function createDocument(name: string, accessToken?: string) {
+  const supabase = createSupabaseServerClient(accessToken);
   const { data, error } = await supabase
     .from("documents")
     .insert({ name })
@@ -62,8 +62,8 @@ export async function createDocument(name: string) {
   } satisfies StoredDocument;
 }
 
-export async function listDocuments() {
-  const supabase = createSupabaseServerClient();
+export async function listDocuments(accessToken?: string) {
+  const supabase = createSupabaseServerClient(accessToken);
   const { data, error } = await supabase
     .from("documents")
     .select("id, name, created_at")
@@ -82,8 +82,8 @@ export async function listDocuments() {
   );
 }
 
-export async function deleteDocument(id: string) {
-  const supabase = createSupabaseServerClient();
+export async function deleteDocument(id: string, accessToken?: string) {
+  const supabase = createSupabaseServerClient(accessToken);
   const { error } = await supabase.from("documents").delete().eq("id", id);
 
   if (error) {
@@ -94,7 +94,8 @@ export async function deleteDocument(id: string) {
 export async function storeDocumentChunks(
   document: StoredDocument,
   chunks: string[],
-  embeddings: number[][]
+  embeddings: number[][],
+  accessToken?: string
 ) {
   if (chunks.length !== embeddings.length) {
     throw new Error("Each document chunk must have a matching embedding.");
@@ -108,7 +109,7 @@ export async function storeDocumentChunks(
     embedding: embeddings[index]
   }));
 
-  const supabase = createSupabaseServerClient();
+  const supabase = createSupabaseServerClient(accessToken);
   const { error } = await supabase.from("document_chunks").insert(rows);
 
   if (error) {

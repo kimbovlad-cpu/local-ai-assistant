@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import ReactMarkdown from "react-markdown";
+import { createClient, type Session } from "@supabase/supabase-js";
 
 type Role = "assistant" | "user";
 
@@ -24,6 +25,11 @@ type StoredDocument = {
   createdAt: string;
 };
 
+type ChatProps = {
+  supabaseAnonKey: string;
+  supabaseUrl: string;
+};
+
 const initialMessages: Message[] = [
   {
     id: "welcome",
@@ -32,19 +38,32 @@ const initialMessages: Message[] = [
   }
 ];
 
-export function Chat() {
+export function Chat({ supabaseAnonKey, supabaseUrl }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
     null
   );
   const [error, setError] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  const supabase = useMemo(() => {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return null;
+    }
+
+    return createClient(supabaseUrl, supabaseAnonKey);
+  }, [supabaseAnonKey, supabaseUrl]);
 
   const canSend = useMemo(
     () => input.trim().length > 0 && !isSending,
@@ -52,8 +71,18 @@ export function Chat() {
   );
 
   const loadDocuments = useCallback(async () => {
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      setDocuments([]);
+      return;
+    }
+
     try {
-      const response = await fetch("/api/documents");
+      const response = await fetch("/api/documents", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
       if (!response.ok) {
         return;
       }
@@ -65,16 +94,53 @@ export function Chat() {
     } catch {
       setDocuments([]);
     }
-  }, []);
+  }, [session?.access_token]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
     let ignore = false;
 
-    fetch("/api/documents")
+    supabase.auth.getSession().then(({ data }) => {
+      if (!ignore) {
+        setSession(data.session);
+      }
+    });
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      setSession(currentSession);
+      if (!currentSession) {
+        setDocuments([]);
+      }
+    });
+
+    return () => {
+      ignore = true;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      return;
+    }
+
+    let ignore = false;
+
+    fetch("/api/documents", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    })
       .then((response) => (response.ok ? response.json() : null))
       .then((body: { documents?: StoredDocument[] } | null) => {
         if (!ignore) {
@@ -90,10 +156,59 @@ export function Chat() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [session?.access_token]);
+
+  async function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase) {
+      setAuthStatus("Supabase is not configured.");
+      return;
+    }
+
+    setIsSigningIn(true);
+    setAuthStatus(null);
+
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password
+      });
+
+      if (signInError) {
+        throw signInError;
+      }
+
+      setPassword("");
+      setAuthStatus("Logged in.");
+    } catch (caughtError) {
+      setAuthStatus(
+        caughtError instanceof Error ? caughtError.message : "Login failed."
+      );
+    } finally {
+      setIsSigningIn(false);
+    }
+  }
+
+  async function handleAdminLogout() {
+    if (!supabase) {
+      return;
+    }
+
+    await supabase.auth.signOut();
+    setDocuments([]);
+    setUploadStatus(null);
+    setAuthStatus("Logged out.");
+  }
 
   async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      setUploadStatus("Admin login is required.");
+      return;
+    }
 
     const file = fileInputRef.current?.files?.[0];
     setUploadStatus(null);
@@ -115,6 +230,7 @@ export function Chat() {
       const response = await fetch("/api/documents", {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -144,6 +260,12 @@ export function Chat() {
   }
 
   async function handleDocumentDelete(document: StoredDocument) {
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      setUploadStatus("Admin login is required.");
+      return;
+    }
+
     setUploadStatus(null);
     setDeletingDocumentId(document.id);
 
@@ -151,6 +273,9 @@ export function Chat() {
       const response = await fetch(
         `/api/documents?id=${encodeURIComponent(document.id)}`,
         {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          },
           method: "DELETE"
         }
       );
@@ -262,53 +387,101 @@ export function Chat() {
 
   return (
     <div className="chat">
-      <section className="admin-section" aria-label="Admin knowledge base">
-        <div className="section-heading">
-          <p className="section-kicker">Admin</p>
-          <h2>Knowledge Base</h2>
-        </div>
+      {session ? (
+        <section className="admin-section" aria-label="Admin knowledge base">
+          <div className="section-heading">
+            <div>
+              <p className="section-kicker">Admin</p>
+              <h2>Knowledge Base</h2>
+            </div>
+            <button
+              className="logout-button"
+              onClick={() => void handleAdminLogout()}
+              type="button"
+            >
+              Logout
+            </button>
+          </div>
 
-        <form className="document-upload" onSubmit={handleDocumentUpload}>
-          <label htmlFor="document-input">Document</label>
-          <input
-            accept=".txt,text/plain"
-            disabled={isUploading}
-            id="document-input"
-            name="document"
-            ref={fileInputRef}
-            type="file"
-          />
-          <button disabled={isUploading} type="submit">
-            {isUploading ? "Uploading..." : "Upload"}
-          </button>
-        </form>
+          <p className="admin-user">{session.user.email}</p>
 
-        {uploadStatus ? <p className="upload-message">{uploadStatus}</p> : null}
+          <form className="document-upload" onSubmit={handleDocumentUpload}>
+            <label htmlFor="document-input">Document</label>
+            <input
+              accept=".txt,text/plain"
+              disabled={isUploading}
+              id="document-input"
+              name="document"
+              ref={fileInputRef}
+              type="file"
+            />
+            <button disabled={isUploading} type="submit">
+              {isUploading ? "Uploading..." : "Upload"}
+            </button>
+          </form>
 
-        <div className="document-list" aria-label="Uploaded documents">
-          <p>Documents</p>
-          {documents.length > 0 ? (
-            <ul>
-              {documents.map((document) => (
-                <li key={document.id}>
-                  <span>{document.name}</span>
-                  <button
-                    disabled={deletingDocumentId === document.id}
-                    onClick={() => void handleDocumentDelete(document)}
-                    type="button"
-                  >
-                    {deletingDocumentId === document.id
-                      ? "Deleting..."
-                      : "Delete"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span>No documents uploaded.</span>
-          )}
-        </div>
-      </section>
+          {uploadStatus ? (
+            <p className="upload-message">{uploadStatus}</p>
+          ) : null}
+
+          <div className="document-list" aria-label="Uploaded documents">
+            <p>Documents</p>
+            {documents.length > 0 ? (
+              <ul>
+                {documents.map((document) => (
+                  <li key={document.id}>
+                    <span>{document.name}</span>
+                    <button
+                      disabled={deletingDocumentId === document.id}
+                      onClick={() => void handleDocumentDelete(document)}
+                      type="button"
+                    >
+                      {deletingDocumentId === document.id
+                        ? "Deleting..."
+                        : "Delete"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span>No documents uploaded.</span>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section className="admin-login-section" aria-label="Admin login">
+          <div className="section-heading">
+            <p className="section-kicker">Admin</p>
+            <h2>Login</h2>
+          </div>
+
+          <form className="admin-login-form" onSubmit={handleAdminLogin}>
+            <label htmlFor="admin-email">Email</label>
+            <input
+              autoComplete="email"
+              id="admin-email"
+              name="email"
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              value={email}
+            />
+            <label htmlFor="admin-password">Password</label>
+            <input
+              autoComplete="current-password"
+              id="admin-password"
+              name="password"
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              value={password}
+            />
+            <button disabled={isSigningIn} type="submit">
+              {isSigningIn ? "Logging in..." : "Login"}
+            </button>
+          </form>
+
+          {authStatus ? <p className="auth-message">{authStatus}</p> : null}
+        </section>
+      )}
 
       <section className="public-section" aria-label="Public chatbot">
         <div className="section-heading">

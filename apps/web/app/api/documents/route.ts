@@ -6,6 +6,7 @@ import {
   listDocuments,
   storeDocumentChunks
 } from "@/lib/document-store";
+import { authenticateSupabaseRequest } from "@/lib/supabase";
 
 type DocumentRequest = {
   name?: string;
@@ -14,7 +15,7 @@ type DocumentRequest = {
 
 const embeddingModel = "text-embedding-3-small";
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
     return Response.json(
       {
@@ -25,8 +26,13 @@ export async function GET() {
     );
   }
 
+  const auth = await authenticateSupabaseRequest(request);
+  if (auth.error || !auth.accessToken) {
+    return Response.json({ error: auth.error }, { status: 401 });
+  }
+
   try {
-    const documents = await listDocuments();
+    const documents = await listDocuments(auth.accessToken);
     return Response.json({ documents });
   } catch (error) {
     console.error("Document list failed", error);
@@ -57,6 +63,11 @@ export async function POST(request: Request) {
       },
       { status: 500 }
     );
+  }
+
+  const auth = await authenticateSupabaseRequest(request);
+  if (auth.error || !auth.accessToken) {
+    return Response.json({ error: auth.error }, { status: 401 });
   }
 
   const body = (await request.json()) as DocumentRequest;
@@ -92,8 +103,8 @@ export async function POST(request: Request) {
       .sort((a, b) => a.index - b.index)
       .map((item) => item.embedding);
 
-    const document = await createDocument(name);
-    await storeDocumentChunks(document, chunks, embeddings);
+    const document = await createDocument(name, auth.accessToken);
+    await storeDocumentChunks(document, chunks, embeddings, auth.accessToken);
 
     return Response.json({
       document: {
@@ -124,6 +135,11 @@ export async function DELETE(request: Request) {
     );
   }
 
+  const auth = await authenticateSupabaseRequest(request);
+  if (auth.error || !auth.accessToken) {
+    return Response.json({ error: auth.error }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const id = url.searchParams.get("id")?.trim();
 
@@ -135,7 +151,7 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    await deleteDocument(id);
+    await deleteDocument(id, auth.accessToken);
     return Response.json({ ok: true });
   } catch (error) {
     console.error("Document delete failed", error);

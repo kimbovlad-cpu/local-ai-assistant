@@ -1,6 +1,9 @@
 import { Chat } from "@/components/chat";
 
 export default function Home() {
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? "";
+
   return (
     <main className="app-shell">
       <section className="chat-panel" aria-label="AI assistant chat">
@@ -11,7 +14,7 @@ export default function Home() {
           </div>
           <span className="status-pill">RAG</span>
         </header>
-        <Chat />
+        <Chat supabaseAnonKey={supabaseAnonKey} supabaseUrl={supabaseUrl} />
       </section>
     </main>
   );
