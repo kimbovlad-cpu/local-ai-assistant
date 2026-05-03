@@ -78,6 +78,23 @@ safe to use in the browser; do not use a service role key in this app.
 
 8. Open `http://localhost:3000`.
 
+## Embed Widget
+
+Use `/widget` for an iframe-friendly public chatbot with no admin controls,
+navigation, or full-page header.
+
+```html
+<iframe
+  src="https://your-vercel-domain.vercel.app/widget"
+  title="AI assistant"
+  width="380"
+  height="600"
+  style="border: 0; max-width: 100%;"
+></iframe>
+```
+
+For local testing, use `http://localhost:3000/widget` as the `src`.
+
 ## Useful Commands
 
 Run from `apps/web`:

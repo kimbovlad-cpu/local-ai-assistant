@@ -116,6 +116,47 @@ h1 {
   flex-direction: column;
 }
 
+.widget-shell {
+  display: flex;
+  width: min(420px, 100vw);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 360px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.widget-shell .chat,
+.widget-shell .public-section {
+  min-height: 0;
+  height: 100%;
+}
+
+.widget-chat .message-list {
+  gap: 10px;
+  padding: 12px;
+}
+
+.widget-chat .message {
+  max-width: 94%;
+  padding: 10px 12px;
+}
+
+.widget-chat .chat-form {
+  gap: 8px;
+  padding: 10px;
+}
+
+.widget-chat .chat-form input {
+  padding: 10px 12px;
+}
+
+.widget-chat .chat-form button {
+  min-height: 42px;
+  padding: 0 14px;
+}
+
 .admin-login-section,
 .admin-section,
 .public-section {

@@ -25,7 +25,11 @@ const initialMessages: Message[] = [
   }
 ];
 
-export function Chat() {
+type ChatProps = {
+  variant?: "default" | "widget";
+};
+
+export function Chat({ variant = "default" }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -130,12 +134,14 @@ export function Chat() {
   }
 
   return (
-    <div className="chat">
+    <div className={`chat ${variant === "widget" ? "widget-chat" : ""}`}>
       <section className="public-section" aria-label="Public chatbot">
-        <div className="section-heading">
-          <p className="section-kicker">Public</p>
-          <h2>Chatbot</h2>
-        </div>
+        {variant === "default" ? (
+          <div className="section-heading">
+            <p className="section-kicker">Public</p>
+            <h2>Chatbot</h2>
+          </div>
+        ) : null}
 
         <div className="message-list" aria-live="polite">
           {messages.map((message) => (
