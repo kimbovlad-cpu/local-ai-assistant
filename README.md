@@ -104,6 +104,29 @@ To add the floating chat launcher to another site, include:
 The script creates a bottom-right chat button and opens `/widget` in an iframe.
 For local testing, use `http://localhost:3000/embed.js`.
 
+## Branding
+
+Edit branding in one place:
+
+```text
+apps/web/lib/branding.ts
+```
+
+Example client values:
+
+```ts
+export const branding = {
+  companyName: "Acme Dental",
+  assistantName: "Acme Assistant",
+  chatTitle: "Ask Acme",
+  welcomeMessage: "Hi, I can help with Acme Dental questions.",
+  inputPlaceholder: "Ask about appointments, services, or policies...",
+  embedButtonText: "Ask Acme",
+  accentColor: "#0f766e",
+  adminTitle: "Acme Admin"
+};
+```
+
 ## Useful Commands
 
 Run from `apps/web`:

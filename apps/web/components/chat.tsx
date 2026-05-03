@@ -8,6 +8,7 @@ import {
   useState
 } from "react";
 import ReactMarkdown from "react-markdown";
+import { branding } from "@/lib/branding";
 
 type Role = "assistant" | "user";
 
@@ -21,7 +22,7 @@ const initialMessages: Message[] = [
   {
     id: "welcome",
     role: "assistant",
-    content: "Ask me anything."
+    content: branding.welcomeMessage
   }
 ];
 
@@ -40,6 +41,13 @@ export function Chat({ variant = "default" }: ChatProps) {
     () => input.trim().length > 0 && !isSending,
     [input, isSending]
   );
+  const suggestedQuestions = "suggestedQuestions" in branding
+    ? branding.suggestedQuestions
+    : [];
+  const isWidget = variant === "widget";
+  const visibleMessages = isWidget
+    ? messages.filter((message) => message.id !== "welcome")
+    : messages;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -134,23 +142,55 @@ export function Chat({ variant = "default" }: ChatProps) {
   }
 
   return (
-    <div className={`chat ${variant === "widget" ? "widget-chat" : ""}`}>
+    <div className={`chat ${isWidget ? "widget-chat" : ""}`}>
       <section className="public-section" aria-label="Public chatbot">
-        {variant === "default" ? (
+        {isWidget ? (
+          <header className="widget-header">
+            <div className="widget-avatar" aria-hidden="true">
+              {branding.assistantName.slice(0, 1)}
+            </div>
+            <div>
+              <p className="widget-kicker">{branding.chatTitle}</p>
+              <h1>{branding.assistantName}</h1>
+              <span className="widget-status">
+                <span aria-hidden="true" />
+                Online
+              </span>
+            </div>
+          </header>
+        ) : (
           <div className="section-heading">
             <p className="section-kicker">Public</p>
-            <h2>Chatbot</h2>
+            <h2>{branding.chatTitle}</h2>
           </div>
-        ) : null}
+        )}
 
         <div className="message-list" aria-live="polite">
-          {messages.map((message) => (
+          {isWidget ? (
+            <div className="widget-welcome" aria-label="Suggested questions">
+              <p>{branding.welcomeMessage}</p>
+              {suggestedQuestions.length > 0 ? (
+                <div className="suggested-question-list">
+                  {suggestedQuestions.map((question) => (
+                    <button
+                      key={question}
+                      onClick={() => setInput(question)}
+                      type="button"
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {visibleMessages.map((message) => (
             <article
               className={`message message-${message.role}`}
               key={message.id}
             >
               <span className="message-role">
-                {message.role === "assistant" ? "Assistant" : "You"}
+                {message.role === "assistant" ? branding.assistantName : "You"}
               </span>
               {message.role === "assistant" ? (
                 <ReactMarkdown>{message.content}</ReactMarkdown>
@@ -172,7 +212,7 @@ export function Chat({ variant = "default" }: ChatProps) {
             id="chat-input"
             name="message"
             onChange={(event) => setInput(event.target.value)}
-            placeholder="Type a message..."
+            placeholder={branding.inputPlaceholder}
             value={input}
           />
           <button disabled={!canSend} type="submit">
