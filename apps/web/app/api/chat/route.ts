@@ -4,6 +4,7 @@ import {
   retrieveRelevantChunks,
   type RetrievedChunk
 } from "@/lib/document-store";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 type ChatRequest = {
   messages?: Array<{
@@ -14,6 +15,8 @@ type ChatRequest = {
 
 const model = "gpt-4o-mini";
 const embeddingModel = "text-embedding-3-small";
+const rateLimitWindowMs = 60 * 1000;
+const rateLimitMaxMessages = 10;
 
 function buildSystemPrompt(retrievedChunks: RetrievedChunk[]) {
   if (retrievedChunks.length === 0) {
@@ -42,6 +45,27 @@ ${documentContext}`;
 }
 
 export async function POST(request: Request) {
+  const rateLimit = checkRateLimit(request, {
+    limit: rateLimitMaxMessages,
+    windowMs: rateLimitWindowMs
+  });
+
+  if (!rateLimit.allowed) {
+    return Response.json(
+      {
+        error: "Too many messages. Please wait a minute and try again."
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(
+            Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))
+          )
+        }
+      }
+    );
+  }
+
   if (!process.env.OPENAI_API_KEY) {
     return new Response(
       JSON.stringify({ error: "OPENAI_API_KEY is not configured." }),

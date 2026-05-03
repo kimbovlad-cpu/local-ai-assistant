@@ -91,6 +91,12 @@ export function Chat({ variant = "default" }: ChatProps) {
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error(
+            "Too many messages. Please wait a minute and try again."
+          );
+        }
+
         throw new Error("The chat API returned an error.");
       }
 
