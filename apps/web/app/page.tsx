@@ -1,9 +1,7 @@
 import { Chat } from "@/components/chat";
+import Link from "next/link";
 
 export default function Home() {
-  const supabaseUrl = process.env.SUPABASE_URL ?? "";
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? "";
-
   return (
     <main className="app-shell">
       <section className="chat-panel" aria-label="AI assistant chat">
@@ -12,9 +10,12 @@ export default function Home() {
             <p className="eyebrow">Local AI Assistant</p>
             <h1>Assistant</h1>
           </div>
-          <span className="status-pill">RAG</span>
+          <nav className="top-nav" aria-label="Primary">
+            <span className="status-pill">RAG</span>
+            <Link href="/admin">Admin</Link>
+          </nav>
         </header>
-        <Chat supabaseAnonKey={supabaseAnonKey} supabaseUrl={supabaseUrl} />
+        <Chat />
       </section>
     </main>
   );

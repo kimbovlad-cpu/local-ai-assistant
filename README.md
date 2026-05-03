@@ -20,8 +20,9 @@ SUPABASE_ANON_KEY=
 ```
 
 `OPENAI_API_KEY` is used for chat responses and document embeddings.
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are used by server routes to store,
-delete, list, and retrieve document chunks.
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are used for Supabase Auth and by server
+routes to store, delete, list, and retrieve document chunks. The anon key is
+safe to use in the browser; do not use a service role key in this app.
 
 ## Local Setup
 
@@ -57,13 +58,25 @@ delete, list, and retrieve document chunks.
    drop function if exists match_document_chunks(vector, integer);
    ```
 
-5. Start local dev server:
+5. Enable Supabase Auth:
+
+   In Supabase Dashboard, open Authentication > Providers and enable Email.
+   For local testing, you can leave email confirmations disabled. For Vercel,
+   add your deployed URL in Authentication > URL Configuration.
+
+6. Create an admin user:
+
+   In Supabase Dashboard, open Authentication > Users, add a user with email and
+   password, then use those credentials in the Admin Login section. At this
+   stage, any authenticated Supabase user is treated as an admin.
+
+7. Start local dev server:
 
    ```powershell
    npm.cmd run dev
    ```
 
-6. Open `http://localhost:3000`.
+8. Open `http://localhost:3000`.
 
 ## Useful Commands
 
@@ -107,6 +120,8 @@ npm.cmd run start
 
 7. After deploy, test:
 
+   - public chat without logging in
+   - admin login
    - admin upload of a `.txt` file
    - admin document list
    - admin delete
@@ -117,6 +132,8 @@ npm.cmd run start
 ## Production Notes
 
 - Do not expose `OPENAI_API_KEY` in client code.
-- Do not use `NEXT_PUBLIC_` for these secrets.
-- No auth is implemented yet, so the admin controls are visible on the same
-  page until auth is added.
+- Do not add or expose a Supabase service role key.
+- `SUPABASE_ANON_KEY` is used for browser auth and server-side Supabase calls.
+- The Admin section is protected by Supabase Auth, but role-based admin
+  authorization is not implemented yet. Any authenticated user can manage the
+  knowledge base.

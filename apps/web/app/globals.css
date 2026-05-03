@@ -88,6 +88,27 @@ h1 {
   padding: 6px 10px;
 }
 
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.top-nav a {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--accent-strong);
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 7px 10px;
+  text-decoration: none;
+}
+
+.top-nav a:hover {
+  border-color: #a9c9c3;
+  background: #edf3f1;
+}
+
 .chat {
   display: flex;
   min-height: 0;
@@ -104,13 +125,21 @@ h1 {
 
 .admin-login-section,
 .admin-section {
-  border-bottom: 1px solid var(--panel-border);
   background: #fbfaf7;
+}
+
+.public-section + .admin-login-section,
+.public-section + .admin-section {
+  border-top: 1px solid var(--panel-border);
 }
 
 .public-section {
   min-height: 0;
   flex: 1;
+}
+
+.admin-panel {
+  min-height: auto;
 }
 
 .section-heading {
@@ -414,6 +443,11 @@ h1 {
   .chat-header,
   .message-list {
     padding-inline: 16px;
+  }
+
+  .top-nav {
+    align-items: flex-end;
+    flex-direction: column;
   }
 
   .chat-form {
