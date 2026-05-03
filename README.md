@@ -95,6 +95,15 @@ navigation, or full-page header.
 
 For local testing, use `http://localhost:3000/widget` as the `src`.
 
+To add the floating chat launcher to another site, include:
+
+```html
+<script src="https://YOUR_DOMAIN/embed.js"></script>
+```
+
+The script creates a bottom-right chat button and opens `/widget` in an iframe.
+For local testing, use `http://localhost:3000/embed.js`.
+
 ## Useful Commands
 
 Run from `apps/web`:
