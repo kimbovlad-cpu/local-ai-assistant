@@ -1,4 +1,6 @@
 import {
+  type Company,
+  type Lead,
   createLead,
   defaultCompanySlug,
   listLeads,
@@ -19,6 +21,53 @@ function isValidEmail(email: string) {
 
 function ensureSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY);
+}
+
+async function sendLeadNotification(company: Company, lead: Lead) {
+  if (!company.notificationEmail) {
+    return;
+  }
+
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL;
+
+  if (!resendApiKey || !fromEmail) {
+    console.warn(
+      "Lead notification skipped because RESEND_API_KEY or FROM_EMAIL is missing."
+    );
+    return;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: company.notificationEmail,
+        subject: `New chatbot lead from ${company.name}`,
+        text: [
+          `Company: ${company.name}`,
+          `Visitor name: ${lead.name}`,
+          `Visitor email: ${lead.email}`,
+          `Question: ${lead.question}`,
+          `Created: ${new Date(lead.createdAt).toLocaleString()}`
+        ].join("\n")
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      console.warn(
+        `Lead notification failed with status ${response.status}. ${errorText}`
+      );
+    }
+  } catch (error) {
+    console.warn("Lead notification failed.", error);
+  }
 }
 
 export async function GET(request: Request) {
@@ -90,14 +139,18 @@ export async function POST(request: Request) {
   }
 
   try {
+    const lead = await createLead({
+      companyId: company.id,
+      email,
+      name,
+      question
+    });
+
+    await sendLeadNotification(company, lead);
+
     return Response.json(
       {
-        lead: await createLead({
-          companyId: company.id,
-          email,
-          name,
-          question
-        })
+        lead
       },
       { status: 201 }
     );

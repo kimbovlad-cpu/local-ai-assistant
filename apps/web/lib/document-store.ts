@@ -11,6 +11,7 @@ export type RetrievedChunk = {
 export type Company = {
   id: string;
   name: string;
+  notificationEmail: string | null;
   slug: string;
 };
 
@@ -85,7 +86,7 @@ export async function getCompanyBySlug(
   const supabase = createSupabaseServerClient(accessToken);
   const { data, error } = await supabase
     .from("companies")
-    .select("id, name, slug")
+    .select("id, name, notification_email, slug")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -100,6 +101,7 @@ export async function getCompanyBySlug(
   return {
     id: data.id as string,
     name: data.name as string,
+    notificationEmail: (data.notification_email as string | null) ?? null,
     slug: data.slug as string
   } satisfies Company;
 }
@@ -108,7 +110,7 @@ export async function getCompanyById(id: string, accessToken?: string) {
   const supabase = createSupabaseServerClient(accessToken);
   const { data, error } = await supabase
     .from("companies")
-    .select("id, name, slug")
+    .select("id, name, notification_email, slug")
     .eq("id", id)
     .maybeSingle();
 
@@ -123,6 +125,7 @@ export async function getCompanyById(id: string, accessToken?: string) {
   return {
     id: data.id as string,
     name: data.name as string,
+    notificationEmail: (data.notification_email as string | null) ?? null,
     slug: data.slug as string
   } satisfies Company;
 }
@@ -156,7 +159,7 @@ export async function listCompanies(accessToken?: string) {
   const supabase = createSupabaseServerClient(accessToken);
   const { data, error } = await supabase
     .from("companies")
-    .select("id, name, slug")
+    .select("id, name, notification_email, slug")
     .order("name", { ascending: true });
 
   if (error) {
@@ -167,6 +170,7 @@ export async function listCompanies(accessToken?: string) {
     (company): Company => ({
       id: company.id as string,
       name: company.name as string,
+      notificationEmail: (company.notification_email as string | null) ?? null,
       slug: company.slug as string
     })
   );
@@ -191,7 +195,7 @@ export async function createCompany(
   const { data, error } = await supabase
     .from("companies")
     .insert({ name, slug })
-    .select("id, name, slug")
+    .select("id, name, notification_email, slug")
     .single();
 
   if (error) {
@@ -201,6 +205,32 @@ export async function createCompany(
   return {
     id: data.id as string,
     name: data.name as string,
+    notificationEmail: (data.notification_email as string | null) ?? null,
+    slug: data.slug as string
+  } satisfies Company;
+}
+
+export async function updateCompanyNotificationEmail(
+  companyId: string,
+  notificationEmail: string | null,
+  accessToken?: string
+) {
+  const supabase = createSupabaseServerClient(accessToken);
+  const { data, error } = await supabase
+    .from("companies")
+    .update({ notification_email: notificationEmail })
+    .eq("id", companyId)
+    .select("id, name, notification_email, slug")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update company: ${error.message}`);
+  }
+
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    notificationEmail: (data.notification_email as string | null) ?? null,
     slug: data.slug as string
   } satisfies Company;
 }

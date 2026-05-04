@@ -420,6 +420,7 @@ h1 {
 
 .company-controls,
 .company-create,
+.company-notification,
 .document-upload {
   display: flex;
   align-items: center;
@@ -433,6 +434,7 @@ h1 {
 
 .company-controls label,
 .company-create label,
+.company-notification label,
 .document-upload label {
   color: var(--muted);
   font-size: 0.85rem;
@@ -441,25 +443,29 @@ h1 {
 
 .company-controls select,
 .company-create input,
+.company-notification input,
 .document-upload input {
   min-width: 0;
   flex: 1;
 }
 
 .company-controls select,
-.company-create input {
+.company-create input,
+.company-notification input {
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 9px 10px;
 }
 
 .company-controls select:focus,
-.company-create input:focus {
+.company-create input:focus,
+.company-notification input:focus {
   border-color: var(--accent);
   outline: 3px solid rgb(31 122 109 / 18%);
 }
 
 .company-create button,
+.company-notification button,
 .document-upload button {
   border: 0;
   border-radius: 8px;
@@ -472,11 +478,13 @@ h1 {
 }
 
 .company-create button:hover:not(:disabled),
+.company-notification button:hover:not(:disabled),
 .document-upload button:hover:not(:disabled) {
   background: var(--accent-strong);
 }
 
 .company-create button:disabled,
+.company-notification button:disabled,
 .document-upload button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -746,6 +754,7 @@ h1 {
 
   .company-controls,
   .company-create,
+  .company-notification,
   .document-upload {
     align-items: stretch;
     flex-direction: column;

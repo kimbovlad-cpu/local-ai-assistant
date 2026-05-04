@@ -18,6 +18,7 @@ type StoredDocument = {
 type Company = {
   id: string;
   name: string;
+  notificationEmail: string | null;
   slug: string;
 };
 
@@ -105,6 +106,9 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
   const [newCompanyName, setNewCompanyName] = useState("");
   const [newCompanySlug, setNewCompanySlug] = useState("");
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
+  const [notificationEmail, setNotificationEmail] = useState("");
+  const [isSavingNotificationEmail, setIsSavingNotificationEmail] =
+    useState(false);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [session, setSession] = useState<Session | null>(null);
@@ -117,6 +121,9 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
 
     return createClient(supabaseUrl, supabaseAnonKey);
   }, [supabaseAnonKey, supabaseUrl]);
+  const selectedCompany = companies.find(
+    (company) => company.slug === selectedCompanySlug
+  );
 
   async function refreshCompanies() {
     const accessToken = session?.access_token;
@@ -133,6 +140,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
       !nextCompanies.some((company) => company.slug === selectedCompanySlug)
     ) {
       setSelectedCompanySlug(nextCompanies[0].slug);
+      setNotificationEmail(nextCompanies[0].notificationEmail ?? "");
     }
 
     return nextCompanies;
@@ -213,6 +221,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
             nextCompanies[0];
           const nextSlug = initialCompany?.slug ?? "default";
           setSelectedCompanySlug(nextSlug);
+          setNotificationEmail(initialCompany?.notificationEmail ?? "");
           setDocuments(await fetchDocuments(accessToken, nextSlug));
           setLeads(await fetchLeads(accessToken, nextSlug));
         }
@@ -351,6 +360,57 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
       );
     } finally {
       setIsCreatingCompany(false);
+    }
+  }
+
+  async function handleNotificationEmailSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const accessToken = session?.access_token;
+    if (!accessToken || !selectedCompany) {
+      setCompanyStatus("Admin login is required.");
+      return;
+    }
+
+    setIsSavingNotificationEmail(true);
+    setCompanyStatus(null);
+
+    try {
+      const response = await fetch("/api/companies", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          companyId: selectedCompany.id,
+          notificationEmail
+        })
+      });
+      const body = (await response.json().catch(() => null)) as {
+        company?: Company;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !body?.company) {
+        throw new Error(body?.error ?? "Notification email save failed.");
+      }
+
+      setCompanies((current) =>
+        current.map((company) =>
+          company.id === body.company?.id ? body.company : company
+        )
+      );
+      setNotificationEmail(body.company.notificationEmail ?? "");
+      setCompanyStatus("Notification email saved.");
+    } catch (caughtError) {
+      setCompanyStatus(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Notification email save failed."
+      );
+    } finally {
+      setIsSavingNotificationEmail(false);
     }
   }
 
@@ -512,7 +572,14 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
         <label htmlFor="company-select">Company</label>
         <select
           id="company-select"
-          onChange={(event) => setSelectedCompanySlug(event.target.value)}
+          onChange={(event) => {
+            const nextSlug = event.target.value;
+            const nextCompany = companies.find(
+              (company) => company.slug === nextSlug
+            );
+            setSelectedCompanySlug(nextSlug);
+            setNotificationEmail(nextCompany?.notificationEmail ?? "");
+          }}
           value={selectedCompanySlug}
         >
           {companies.map((company) => (
@@ -543,6 +610,23 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
       </form>
 
       {companyStatus ? <p className="upload-message">{companyStatus}</p> : null}
+
+      <form
+        className="company-notification"
+        onSubmit={handleNotificationEmailSave}
+      >
+        <label htmlFor="notification-email">Notification Email</label>
+        <input
+          id="notification-email"
+          onChange={(event) => setNotificationEmail(event.target.value)}
+          placeholder="leads@example.com"
+          type="email"
+          value={notificationEmail}
+        />
+        <button disabled={isSavingNotificationEmail} type="submit">
+          {isSavingNotificationEmail ? "Saving..." : "Save"}
+        </button>
+      </form>
 
       <form className="document-upload" onSubmit={handleDocumentUpload}>
         <label htmlFor="document-input">Document</label>
