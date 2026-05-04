@@ -4,11 +4,14 @@ import {
   createDocument,
   deleteDocument,
   listDocuments,
+  resolveCompany,
   storeDocumentChunks
 } from "@/lib/document-store";
 import { authenticateSupabaseRequest } from "@/lib/supabase";
 
 type DocumentRequest = {
+  companyId?: string;
+  companySlug?: string;
   name?: string;
   text?: string;
 };
@@ -32,7 +35,20 @@ export async function GET(request: Request) {
   }
 
   try {
-    const documents = await listDocuments(auth.accessToken);
+    const url = new URL(request.url);
+    const company = await resolveCompany(
+      {
+        companyId: url.searchParams.get("companyId") ?? undefined,
+        companySlug: url.searchParams.get("companySlug") ?? undefined
+      },
+      auth.accessToken
+    );
+
+    if (!company) {
+      return Response.json({ error: "Company was not found." }, { status: 404 });
+    }
+
+    const documents = await listDocuments(company.id, auth.accessToken);
     return Response.json({ documents });
   } catch (error) {
     console.error("Document list failed", error);
@@ -88,6 +104,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const company = await resolveCompany(
+    {
+      companyId: body.companyId,
+      companySlug: body.companySlug
+    },
+    auth.accessToken
+  );
+
+  if (!company) {
+    return Response.json({ error: "Company was not found." }, { status: 404 });
+  }
+
   const chunks = chunkText(text);
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -103,7 +131,7 @@ export async function POST(request: Request) {
       .sort((a, b) => a.index - b.index)
       .map((item) => item.embedding);
 
-    const document = await createDocument(name, auth.accessToken);
+    const document = await createDocument(name, company.id, auth.accessToken);
     await storeDocumentChunks(document, chunks, embeddings, auth.accessToken);
 
     return Response.json({
@@ -151,7 +179,19 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    await deleteDocument(id, auth.accessToken);
+    const company = await resolveCompany(
+      {
+        companyId: url.searchParams.get("companyId") ?? undefined,
+        companySlug: url.searchParams.get("companySlug") ?? undefined
+      },
+      auth.accessToken
+    );
+
+    if (!company) {
+      return Response.json({ error: "Company was not found." }, { status: 404 });
+    }
+
+    await deleteDocument(id, company.id, auth.accessToken);
     return Response.json({ ok: true });
   } catch (error) {
     console.error("Document delete failed", error);

@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import {
+  defaultCompanySlug,
+  getCompanyBySlug,
   retrieveRelevantChunks,
   type RetrievedChunk
 } from "@/lib/document-store";
@@ -11,6 +13,7 @@ type ChatRequest = {
     role?: string;
     content?: string;
   }>;
+  companySlug?: string;
 };
 
 const model = "gpt-4o-mini";
@@ -18,12 +21,19 @@ const embeddingModel = "text-embedding-3-small";
 const rateLimitWindowMs = 60 * 1000;
 const rateLimitMaxMessages = 10;
 
+function normalizeCompanySlug(slug?: string) {
+  return slug?.trim() || defaultCompanySlug;
+}
+
 function buildSystemPrompt(retrievedChunks: RetrievedChunk[]) {
   if (retrievedChunks.length === 0) {
     return `You are a concise, helpful AI assistant for a local assistant MVP.
 
 No retrieved sources were found for the user's latest question.
-If the answer is not supported by retrieved sources, say so.`;
+If the answer is not available in the knowledge base, reply exactly:
+"I don't have that information yet. You may want to contact the team directly."
+
+Do not mention sources, citations, files, chunks, or retrieved context in the public answer.`;
   }
 
   const documentContext = retrievedChunks
@@ -36,11 +46,15 @@ ${chunk.content}`
 
   return `You are a concise, helpful AI assistant for a local assistant MVP.
 
-Answer using the retrieved sources.
-At the end, include a short Sources section listing the filenames and chunks used.
-If the answer is not supported by the retrieved sources, say so.
+Answer using only the retrieved knowledge base context.
+Write naturally, like a website support assistant.
+Use markdown when it helps readability.
+Do not include a Sources section.
+Do not mention source labels, filenames, chunk numbers, citations, or phrases like "according to Source".
+If the answer is not available in the retrieved knowledge base context, reply exactly:
+"I don't have that information yet. You may want to contact the team directly."
 
-Retrieved sources:
+Retrieved knowledge base context with internal labels:
 ${documentContext}`;
 }
 
@@ -84,6 +98,7 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as ChatRequest;
+  const companySlug = normalizeCompanySlug(body.companySlug);
   const messages = (body.messages ?? []).filter(
     (message): message is { role: "assistant" | "user"; content: string } =>
       (message.role === "assistant" || message.role === "user") &&
@@ -107,12 +122,26 @@ export async function POST(request: Request) {
   });
 
   try {
+    const company = await getCompanyBySlug(companySlug);
+    if (!company) {
+      return Response.json(
+        {
+          error:
+            "I could not find that company workspace. Please check the chat link and try again."
+        },
+        { status: 404 }
+      );
+    }
+
     const embeddingResponse = await openai.embeddings.create({
       model: embeddingModel,
       input: latestUserMessage?.content.trim() ?? ""
     });
     const queryEmbedding = embeddingResponse.data[0]?.embedding ?? [];
-    const retrievedChunks = await retrieveRelevantChunks(queryEmbedding);
+    const retrievedChunks = await retrieveRelevantChunks(
+      queryEmbedding,
+      company.id
+    );
 
     const stream = await openai.chat.completions.create({
       model,

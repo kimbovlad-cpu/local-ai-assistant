@@ -13,13 +13,17 @@ export function GET() {
 
   var initialScript = document.currentScript;
   var initialScriptSrc = initialScript && initialScript.src ? initialScript.src : "";
+  var initialCompany = initialScript && initialScript.getAttribute("data-company")
+    ? initialScript.getAttribute("data-company")
+    : "";
 
   function init() {
     var scripts = document.getElementsByTagName("script");
     var fallbackScript = scripts[scripts.length - 1];
     var scriptSrc = initialScriptSrc || (fallbackScript && fallbackScript.src);
+    var company = initialCompany || (fallbackScript && fallbackScript.getAttribute("data-company")) || "default";
     var baseUrl = scriptSrc ? new URL(scriptSrc).origin : window.location.origin;
-    var widgetUrl = baseUrl + "/widget";
+    var widgetUrl = baseUrl + "/widget?company=" + encodeURIComponent(company);
     var buttonText = ${buttonText};
     var accentColor = ${accentColor};
     var isOpen = false;

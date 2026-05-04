@@ -15,17 +15,51 @@ type StoredDocument = {
   createdAt: string;
 };
 
+type Company = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+type Lead = {
+  id: string;
+  name: string;
+  email: string;
+  question: string;
+  createdAt: string;
+};
+
 type AdminProps = {
   supabaseAnonKey: string;
   supabaseUrl: string;
 };
 
-async function fetchDocuments(accessToken: string) {
-  const response = await fetch("/api/documents", {
+async function fetchCompanies(accessToken: string) {
+  const response = await fetch("/api/companies", {
     headers: {
       Authorization: `Bearer ${accessToken}`
     }
   });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const body = (await response.json()) as {
+    companies?: Company[];
+  };
+  return body.companies ?? [];
+}
+
+async function fetchDocuments(accessToken: string, companySlug: string) {
+  const response = await fetch(
+    `/api/documents?companySlug=${encodeURIComponent(companySlug)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
   if (!response.ok) {
     return [];
   }
@@ -34,6 +68,25 @@ async function fetchDocuments(accessToken: string) {
     documents?: StoredDocument[];
   };
   return body.documents ?? [];
+}
+
+async function fetchLeads(accessToken: string, companySlug: string) {
+  const response = await fetch(
+    `/api/leads?companySlug=${encodeURIComponent(companySlug)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
+  if (!response.ok) {
+    return [];
+  }
+
+  const body = (await response.json()) as {
+    leads?: Lead[];
+  };
+  return body.leads ?? [];
 }
 
 export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
@@ -45,8 +98,15 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
     null
   );
   const [authStatus, setAuthStatus] = useState<string | null>(null);
+  const [companyStatus, setCompanyStatus] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompanySlug, setSelectedCompanySlug] = useState("default");
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newCompanySlug, setNewCompanySlug] = useState("");
+  const [isCreatingCompany, setIsCreatingCompany] = useState(false);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -58,17 +118,51 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
     return createClient(supabaseUrl, supabaseAnonKey);
   }, [supabaseAnonKey, supabaseUrl]);
 
-  async function refreshDocuments() {
+  async function refreshCompanies() {
     const accessToken = session?.access_token;
     if (!accessToken) {
+      setCompanies([]);
+      return [];
+    }
+
+    const nextCompanies = await fetchCompanies(accessToken);
+    setCompanies(nextCompanies);
+
+    if (
+      nextCompanies.length > 0 &&
+      !nextCompanies.some((company) => company.slug === selectedCompanySlug)
+    ) {
+      setSelectedCompanySlug(nextCompanies[0].slug);
+    }
+
+    return nextCompanies;
+  }
+
+  async function refreshDocuments(companySlug = selectedCompanySlug) {
+    const accessToken = session?.access_token;
+    if (!accessToken || !companySlug) {
       setDocuments([]);
       return;
     }
 
     try {
-      setDocuments(await fetchDocuments(accessToken));
+      setDocuments(await fetchDocuments(accessToken, companySlug));
     } catch {
       setDocuments([]);
+    }
+  }
+
+  async function refreshLeads(companySlug = selectedCompanySlug) {
+    const accessToken = session?.access_token;
+    if (!accessToken || !companySlug) {
+      setLeads([]);
+      return;
+    }
+
+    try {
+      setLeads(await fetchLeads(accessToken, companySlug));
+    } catch {
+      setLeads([]);
     }
   }
 
@@ -90,7 +184,9 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
     } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       setSession(currentSession);
       if (!currentSession) {
+        setCompanies([]);
         setDocuments([]);
+        setLeads([]);
       }
     });
 
@@ -108,15 +204,24 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
 
     let ignore = false;
 
-    fetchDocuments(accessToken)
-      .then((nextDocuments) => {
+    fetchCompanies(accessToken)
+      .then(async (nextCompanies) => {
         if (!ignore) {
-          setDocuments(nextDocuments);
+          setCompanies(nextCompanies);
+          const initialCompany =
+            nextCompanies.find((company) => company.slug === "default") ??
+            nextCompanies[0];
+          const nextSlug = initialCompany?.slug ?? "default";
+          setSelectedCompanySlug(nextSlug);
+          setDocuments(await fetchDocuments(accessToken, nextSlug));
+          setLeads(await fetchLeads(accessToken, nextSlug));
         }
       })
       .catch(() => {
         if (!ignore) {
+          setCompanies([]);
           setDocuments([]);
+          setLeads([]);
         }
       });
 
@@ -124,6 +229,33 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
       ignore = true;
     };
   }, [session?.access_token]);
+
+  useEffect(() => {
+    const accessToken = session?.access_token;
+    if (!accessToken || !selectedCompanySlug) {
+      return;
+    }
+
+    let ignore = false;
+
+    fetchDocuments(accessToken, selectedCompanySlug)
+      .then(async (nextDocuments) => {
+        if (!ignore) {
+          setDocuments(nextDocuments);
+          setLeads(await fetchLeads(accessToken, selectedCompanySlug));
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setDocuments([]);
+          setLeads([]);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedCompanySlug, session?.access_token]);
 
   async function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -163,9 +295,63 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
     }
 
     await supabase.auth.signOut();
+    setCompanies([]);
     setDocuments([]);
+    setLeads([]);
+    setCompanyStatus(null);
     setUploadStatus(null);
     setAuthStatus("Logged out.");
+  }
+
+  async function handleCompanyCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      setCompanyStatus("Admin login is required.");
+      return;
+    }
+
+    setIsCreatingCompany(true);
+    setCompanyStatus(null);
+
+    try {
+      const response = await fetch("/api/companies", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: newCompanyName,
+          slug: newCompanySlug
+        })
+      });
+      const body = (await response.json().catch(() => null)) as {
+        company?: Company;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !body?.company) {
+        throw new Error(body?.error ?? "Company create failed.");
+      }
+
+      setNewCompanyName("");
+      setNewCompanySlug("");
+      setSelectedCompanySlug(body.company.slug);
+      setCompanyStatus(`Created ${body.company.name}.`);
+      await refreshCompanies();
+      await refreshDocuments(body.company.slug);
+      await refreshLeads(body.company.slug);
+    } catch (caughtError) {
+      setCompanyStatus(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Company create failed."
+      );
+    } finally {
+      setIsCreatingCompany(false);
+    }
   }
 
   async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
@@ -201,6 +387,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          companySlug: selectedCompanySlug,
           name: file.name,
           text
         })
@@ -238,7 +425,9 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
 
     try {
       const response = await fetch(
-        `/api/documents?id=${encodeURIComponent(document.id)}`,
+        `/api/documents?id=${encodeURIComponent(
+          document.id
+        )}&companySlug=${encodeURIComponent(selectedCompanySlug)}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`
@@ -319,6 +508,42 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
 
       <p className="admin-user">{session.user.email}</p>
 
+      <div className="company-controls">
+        <label htmlFor="company-select">Company</label>
+        <select
+          id="company-select"
+          onChange={(event) => setSelectedCompanySlug(event.target.value)}
+          value={selectedCompanySlug}
+        >
+          {companies.map((company) => (
+            <option key={company.id} value={company.slug}>
+              {company.name} ({company.slug})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <form className="company-create" onSubmit={handleCompanyCreate}>
+        <label htmlFor="company-name">New company</label>
+        <input
+          id="company-name"
+          onChange={(event) => setNewCompanyName(event.target.value)}
+          placeholder="Company name"
+          value={newCompanyName}
+        />
+        <input
+          id="company-slug"
+          onChange={(event) => setNewCompanySlug(event.target.value)}
+          placeholder="company-slug"
+          value={newCompanySlug}
+        />
+        <button disabled={isCreatingCompany} type="submit">
+          {isCreatingCompany ? "Creating..." : "Create"}
+        </button>
+      </form>
+
+      {companyStatus ? <p className="upload-message">{companyStatus}</p> : null}
+
       <form className="document-upload" onSubmit={handleDocumentUpload}>
         <label htmlFor="document-input">Document</label>
         <input
@@ -355,6 +580,26 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
           </ul>
         ) : (
           <span>No documents uploaded.</span>
+        )}
+      </div>
+
+      <div className="lead-list" aria-label="Recent leads">
+        <p>Leads</p>
+        {leads.length > 0 ? (
+          <ul>
+            {leads.map((lead) => (
+              <li key={lead.id}>
+                <strong>{lead.name}</strong>
+                <a href={`mailto:${lead.email}`}>{lead.email}</a>
+                <span>{lead.question}</span>
+                <time dateTime={lead.createdAt}>
+                  {new Date(lead.createdAt).toLocaleString()}
+                </time>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span>No leads yet.</span>
         )}
       </div>
     </section>

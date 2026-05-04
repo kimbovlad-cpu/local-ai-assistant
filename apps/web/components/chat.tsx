@@ -14,6 +14,7 @@ type Role = "assistant" | "user";
 
 type Message = {
   id: string;
+  leadQuestion?: string;
   role: Role;
   content: string;
 };
@@ -25,16 +26,28 @@ const initialMessages: Message[] = [
     content: branding.welcomeMessage
   }
 ];
+const unansweredText =
+  "I don't have that information yet. You may want to contact the team directly.";
 
 type ChatProps = {
+  companySlug?: string;
   variant?: "default" | "widget";
 };
 
-export function Chat({ variant = "default" }: ChatProps) {
+export function Chat({
+  companySlug = "default",
+  variant = "default"
+}: ChatProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leadEmail, setLeadEmail] = useState("");
+  const [leadName, setLeadName] = useState("");
+  const [leadStatusByMessageId, setLeadStatusByMessageId] = useState<
+    Record<string, string>
+  >({});
+  const [submittingLeadId, setSubmittingLeadId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(
@@ -86,18 +99,23 @@ export function Chat({ variant = "default" }: ChatProps) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          companySlug,
           messages: requestMessages
         })
       });
 
       if (!response.ok) {
+        const errorBody = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+
         if (response.status === 429) {
           throw new Error(
             "Too many messages. Please wait a minute and try again."
           );
         }
 
-        throw new Error("The chat API returned an error.");
+        throw new Error(errorBody?.error ?? "The chat API returned an error.");
       }
 
       if (!response.body) {
@@ -107,7 +125,7 @@ export function Chat({ variant = "default" }: ChatProps) {
       const assistantId = crypto.randomUUID();
       setMessages((current) => [
         ...current,
-        { id: assistantId, role: "assistant", content: "" }
+        { id: assistantId, leadQuestion: content, role: "assistant", content: "" }
       ]);
 
       const reader = response.body.getReader();
@@ -144,6 +162,57 @@ export function Chat({ variant = "default" }: ChatProps) {
       );
     } finally {
       setIsSending(false);
+    }
+  }
+
+  async function handleLeadSubmit(message: Message) {
+    if (!message.leadQuestion || submittingLeadId) {
+      return;
+    }
+
+    setSubmittingLeadId(message.id);
+    setLeadStatusByMessageId((current) => ({
+      ...current,
+      [message.id]: ""
+    }));
+
+    try {
+      const response = await fetch("/api/leads", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          companySlug,
+          email: leadEmail,
+          name: leadName,
+          question: message.leadQuestion
+        })
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Lead save failed.");
+      }
+
+      setLeadEmail("");
+      setLeadName("");
+      setLeadStatusByMessageId((current) => ({
+        ...current,
+        [message.id]: "Thanks. The team will follow up."
+      }));
+    } catch (caughtError) {
+      setLeadStatusByMessageId((current) => ({
+        ...current,
+        [message.id]:
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Lead save failed."
+      }));
+    } finally {
+      setSubmittingLeadId(null);
     }
   }
 
@@ -199,7 +268,42 @@ export function Chat({ variant = "default" }: ChatProps) {
                 {message.role === "assistant" ? branding.assistantName : "You"}
               </span>
               {message.role === "assistant" ? (
-                <ReactMarkdown>{message.content}</ReactMarkdown>
+                <>
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                  {message.content.includes(unansweredText) &&
+                  message.leadQuestion ? (
+                    <form
+                      className="lead-capture"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleLeadSubmit(message);
+                      }}
+                    >
+                      <input
+                        aria-label="Name"
+                        onChange={(event) => setLeadName(event.target.value)}
+                        placeholder="Name"
+                        value={leadName}
+                      />
+                      <input
+                        aria-label="Email"
+                        onChange={(event) => setLeadEmail(event.target.value)}
+                        placeholder="Email"
+                        type="email"
+                        value={leadEmail}
+                      />
+                      <button
+                        disabled={submittingLeadId === message.id}
+                        type="submit"
+                      >
+                        {submittingLeadId === message.id ? "Sending..." : "Send"}
+                      </button>
+                      {leadStatusByMessageId[message.id] ? (
+                        <span>{leadStatusByMessageId[message.id]}</span>
+                      ) : null}
+                    </form>
+                  ) : null}
+                </>
               ) : (
                 <p>{message.content}</p>
               )}
