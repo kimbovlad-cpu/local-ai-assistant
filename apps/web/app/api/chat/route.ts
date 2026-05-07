@@ -1,8 +1,10 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import {
+  createChatMessage,
   defaultCompanySlug,
   getCompanyBySlug,
+  getOrCreateChatSession,
   retrieveRelevantChunks,
   type RetrievedChunk
 } from "@/lib/document-store";
@@ -14,6 +16,8 @@ type ChatRequest = {
     content?: string;
   }>;
   companySlug?: string;
+  sessionId?: string;
+  visitorId?: string;
 };
 
 const model = "gpt-4o-mini";
@@ -25,14 +29,23 @@ function normalizeCompanySlug(slug?: string) {
   return slug?.trim() || defaultCompanySlug;
 }
 
-function buildSystemPrompt(retrievedChunks: RetrievedChunk[]) {
+function buildSystemPrompt(companyName: string, retrievedChunks: RetrievedChunk[]) {
+  const guardrails = `You are a concise, helpful website support assistant for ${companyName}.
+
+Scope:
+- Answer only questions related to ${companyName}, its service, or the selected company knowledge base.
+- In-scope topics include uploaded document information, pricing, implementation, features, lead capture, bookings/programări, contact, and business use cases.
+- Treat differently worded normal business questions as in scope when they reasonably relate to the company/service.
+- Refuse clearly unrelated requests, including games, unrelated code, general trivia, homework, entertainment, and questions unrelated to the company/service.
+- For unrelated requests, reply with a short polite refusal and redirect to relevant company/service topics.
+- Match the visitor's language. If the visitor writes in Romanian, refusals and fallback answers must be in Romanian.
+- If the question is related to the company/service but the exact answer is missing, say the information is not available yet and offer contact/lead capture. In Romanian, start with: "Nu am această informație încă." In English, reply exactly: "I don't have that information yet. You may want to contact the team directly."
+- Do not invent prices, timelines, contact details, features, policies, or document facts.`;
+
   if (retrievedChunks.length === 0) {
-    return `You are a concise, helpful AI assistant for a local assistant MVP.
+    return `${guardrails}
 
 No retrieved sources were found for the user's latest question.
-If the answer is not available in the knowledge base, reply exactly:
-"I don't have that information yet. You may want to contact the team directly."
-
 Do not mention sources, citations, files, chunks, or retrieved context in the public answer.`;
   }
 
@@ -44,15 +57,13 @@ ${chunk.content}`
     )
     .join("\n\n---\n\n");
 
-  return `You are a concise, helpful AI assistant for a local assistant MVP.
+  return `${guardrails}
 
 Answer using only the retrieved knowledge base context.
 Write naturally, like a website support assistant.
 Use markdown when it helps readability.
 Do not include a Sources section.
 Do not mention source labels, filenames, chunk numbers, citations, or phrases like "according to Source".
-If the answer is not available in the retrieved knowledge base context, reply exactly:
-"I don't have that information yet. You may want to contact the team directly."
 
 Retrieved knowledge base context with internal labels:
 ${documentContext}`;
@@ -133,6 +144,18 @@ export async function POST(request: Request) {
       );
     }
 
+    const chatSession = await getOrCreateChatSession({
+      companyId: company.id,
+      sessionId: body.sessionId,
+      visitorId: body.visitorId
+    });
+    await createChatMessage({
+      companyId: company.id,
+      content: latestUserMessage?.content.trim() ?? "",
+      role: "user",
+      sessionId: chatSession.id
+    });
+
     const embeddingResponse = await openai.embeddings.create({
       model: embeddingModel,
       input: latestUserMessage?.content.trim() ?? ""
@@ -149,7 +172,7 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "system",
-          content: buildSystemPrompt(retrievedChunks)
+          content: buildSystemPrompt(company.name, retrievedChunks)
         },
         ...messages.map(
           (message): ChatCompletionMessageParam => ({
@@ -163,12 +186,22 @@ export async function POST(request: Request) {
     const readable = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
+        let assistantContent = "";
         try {
           for await (const chunk of stream) {
             const delta = chunk.choices[0]?.delta?.content;
             if (delta) {
+              assistantContent += delta;
               controller.enqueue(encoder.encode(delta));
             }
+          }
+          if (assistantContent.trim()) {
+            await createChatMessage({
+              companyId: company.id,
+              content: assistantContent.trim(),
+              role: "assistant",
+              sessionId: chatSession.id
+            });
           }
           controller.close();
         } catch (streamError) {
@@ -179,7 +212,10 @@ export async function POST(request: Request) {
     });
 
     return new Response(readable, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" }
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Chat-Session-Id": chatSession.id
+      }
     });
   } catch (error) {
     console.error("OpenAI chat request failed", error);

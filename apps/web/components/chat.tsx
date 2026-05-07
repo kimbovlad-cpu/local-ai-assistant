@@ -28,6 +28,13 @@ const initialMessages: Message[] = [
 ];
 const unansweredText =
   "I don't have that information yet. You may want to contact the team directly.";
+const unavailableAnswerMarkers = [
+  unansweredText,
+  "Nu am această informație încă",
+  "Nu am aceasta informatie inca",
+  "Informația nu este disponibilă încă",
+  "Informatia nu este disponibila inca"
+];
 
 type ChatProps = {
   companySlug?: string;
@@ -42,6 +49,8 @@ export function Chat({
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [visitorId, setVisitorId] = useState<string | null>(null);
   const [leadEmail, setLeadEmail] = useState("");
   const [leadName, setLeadName] = useState("");
   const [leadStatusByMessageId, setLeadStatusByMessageId] = useState<
@@ -66,10 +75,22 @@ export function Chat({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  useEffect(() => {
+    const sessionKey = `local-ai-assistant-session-${companySlug}`;
+    const visitorKey = "local-ai-assistant-visitor";
+    const existingVisitorId = localStorage.getItem(visitorKey);
+    const nextVisitorId = existingVisitorId ?? crypto.randomUUID();
 
-    const content = input.trim();
+    if (!existingVisitorId) {
+      localStorage.setItem(visitorKey, nextVisitorId);
+    }
+
+    setVisitorId(nextVisitorId);
+    setSessionId(localStorage.getItem(sessionKey));
+  }, [companySlug]);
+
+  async function sendMessage(content: string) {
+    content = content.trim();
     if (!content || isSending) {
       return;
     }
@@ -100,6 +121,8 @@ export function Chat({
         },
         body: JSON.stringify({
           companySlug,
+          sessionId,
+          visitorId,
           messages: requestMessages
         })
       });
@@ -120,6 +143,13 @@ export function Chat({
 
       if (!response.body) {
         throw new Error("The chat API did not return a response stream.");
+      }
+
+      const responseSessionId = response.headers.get("X-Chat-Session-Id");
+      if (responseSessionId) {
+        const sessionKey = `local-ai-assistant-session-${companySlug}`;
+        setSessionId(responseSessionId);
+        localStorage.setItem(sessionKey, responseSessionId);
       }
 
       const assistantId = crypto.randomUUID();
@@ -163,6 +193,11 @@ export function Chat({
     } finally {
       setIsSending(false);
     }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await sendMessage(input);
   }
 
   async function handleLeadSubmit(message: Message) {
@@ -248,8 +283,9 @@ export function Chat({
                 <div className="suggested-question-list">
                   {suggestedQuestions.map((question) => (
                     <button
+                      disabled={isSending}
                       key={question}
-                      onClick={() => setInput(question)}
+                      onClick={() => void sendMessage(question)}
                       type="button"
                     >
                       {question}
@@ -270,7 +306,9 @@ export function Chat({
               {message.role === "assistant" ? (
                 <>
                   <ReactMarkdown>{message.content}</ReactMarkdown>
-                  {message.content.includes(unansweredText) &&
+                  {unavailableAnswerMarkers.some((marker) =>
+                    message.content.includes(marker)
+                  ) &&
                   message.leadQuestion ? (
                     <form
                       className="lead-capture"

@@ -31,6 +31,24 @@ export type Lead = {
   createdAt: string;
 };
 
+export type ChatMessage = {
+  id: string;
+  companyId: string;
+  sessionId: string;
+  role: "assistant" | "user";
+  content: string;
+  createdAt: string;
+};
+
+export type ChatSession = {
+  id: string;
+  companyId: string;
+  visitorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+};
+
 type DocumentChunkInsert = {
   document_id: string;
   company_id: string;
@@ -54,6 +72,23 @@ type LeadRow = {
   name: string;
   email: string;
   question: string;
+  created_at: string;
+};
+
+type ChatSessionRow = {
+  id: string;
+  company_id: string;
+  visitor_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ChatMessageRow = {
+  id: string;
+  company_id: string;
+  session_id: string;
+  role: string;
+  content: string;
   created_at: string;
 };
 
@@ -339,6 +374,117 @@ export async function listLeads(companyId: string, accessToken?: string) {
   return ((data ?? []) as LeadRow[]).map(mapLead);
 }
 
+export async function getOrCreateChatSession(input: {
+  companyId: string;
+  sessionId?: string;
+  visitorId?: string;
+}) {
+  const supabase = createSupabaseServerClient();
+
+  if (input.sessionId?.trim()) {
+    const { data, error } = await supabase
+      .from("chat_sessions")
+      .select("id, company_id, visitor_id, created_at, updated_at")
+      .eq("id", input.sessionId.trim())
+      .eq("company_id", input.companyId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to load chat session: ${error.message}`);
+    }
+
+    if (data) {
+      return mapChatSession(data as ChatSessionRow, []);
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("chat_sessions")
+    .insert({
+      company_id: input.companyId,
+      visitor_id: input.visitorId?.trim() || null
+    })
+    .select("id, company_id, visitor_id, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create chat session: ${error.message}`);
+  }
+
+  return mapChatSession(data as ChatSessionRow, []);
+}
+
+export async function createChatMessage(input: {
+  companyId: string;
+  content: string;
+  role: "assistant" | "user";
+  sessionId: string;
+}) {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .insert({
+      company_id: input.companyId,
+      content: input.content,
+      role: input.role,
+      session_id: input.sessionId
+    })
+    .select("id, company_id, session_id, role, content, created_at")
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create chat message: ${error.message}`);
+  }
+
+  await touchChatSession(input.sessionId, input.companyId);
+
+  return mapChatMessage(data as ChatMessageRow);
+}
+
+export async function listChatSessions(companyId: string, accessToken?: string) {
+  const supabase = createSupabaseServerClient(accessToken);
+  const { data: sessions, error: sessionError } = await supabase
+    .from("chat_sessions")
+    .select("id, company_id, visitor_id, created_at, updated_at")
+    .eq("company_id", companyId)
+    .order("updated_at", { ascending: false })
+    .limit(10);
+
+  if (sessionError) {
+    throw new Error(`Failed to list chat sessions: ${sessionError.message}`);
+  }
+
+  const sessionRows = (sessions ?? []) as ChatSessionRow[];
+  const sessionIds = sessionRows.map((session) => session.id);
+
+  if (sessionIds.length === 0) {
+    return [];
+  }
+
+  const { data: messages, error: messageError } = await supabase
+    .from("chat_messages")
+    .select("id, company_id, session_id, role, content, created_at")
+    .eq("company_id", companyId)
+    .in("session_id", sessionIds)
+    .order("created_at", { ascending: true });
+
+  if (messageError) {
+    throw new Error(`Failed to list chat messages: ${messageError.message}`);
+  }
+
+  const messagesBySession = ((messages ?? []) as ChatMessageRow[]).reduce<
+    Record<string, ChatMessage[]>
+  >((groups, message) => {
+    groups[message.session_id] = groups[message.session_id] ?? [];
+    groups[message.session_id].push(mapChatMessage(message));
+    return groups;
+  }, {});
+
+  return sessionRows.map((session) =>
+    mapChatSession(session, messagesBySession[session.id] ?? [])
+  );
+}
+
 export async function storeDocumentChunks(
   document: StoredDocument,
   chunks: string[],
@@ -404,5 +550,43 @@ function mapLead(lead: LeadRow): Lead {
     email: lead.email,
     question: lead.question,
     createdAt: lead.created_at
+  };
+}
+
+async function touchChatSession(sessionId: string, companyId: string) {
+  const supabase = createSupabaseServerClient();
+  const { error } = await supabase
+    .from("chat_sessions")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", sessionId)
+    .eq("company_id", companyId);
+
+  if (error) {
+    throw new Error(`Failed to update chat session: ${error.message}`);
+  }
+}
+
+function mapChatSession(
+  session: ChatSessionRow,
+  messages: ChatMessage[]
+): ChatSession {
+  return {
+    id: session.id,
+    companyId: session.company_id,
+    visitorId: session.visitor_id,
+    createdAt: session.created_at,
+    updatedAt: session.updated_at,
+    messages
+  };
+}
+
+function mapChatMessage(message: ChatMessageRow): ChatMessage {
+  return {
+    id: message.id,
+    companyId: message.company_id,
+    sessionId: message.session_id,
+    role: message.role === "assistant" ? "assistant" : "user",
+    content: message.content,
+    createdAt: message.created_at
   };
 }

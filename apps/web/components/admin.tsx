@@ -30,6 +30,21 @@ type Lead = {
   createdAt: string;
 };
 
+type ChatLogMessage = {
+  id: string;
+  role: "assistant" | "user";
+  content: string;
+  createdAt: string;
+};
+
+type ChatLogSession = {
+  id: string;
+  visitorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatLogMessage[];
+};
+
 type AdminProps = {
   supabaseAnonKey: string;
   supabaseUrl: string;
@@ -90,6 +105,25 @@ async function fetchLeads(accessToken: string, companySlug: string) {
   return body.leads ?? [];
 }
 
+async function fetchChatLogs(accessToken: string, companySlug: string) {
+  const response = await fetch(
+    `/api/chat-logs?companySlug=${encodeURIComponent(companySlug)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
+  if (!response.ok) {
+    return [];
+  }
+
+  const body = (await response.json()) as {
+    sessions?: ChatLogSession[];
+  };
+  return body.sessions ?? [];
+}
+
 export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -111,6 +145,10 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
     useState(false);
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [chatLogs, setChatLogs] = useState<ChatLogSession[]>([]);
+  const [expandedChatSessionId, setExpandedChatSessionId] = useState<
+    string | null
+  >(null);
   const [session, setSession] = useState<Session | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -174,6 +212,20 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
     }
   }
 
+  async function refreshChatLogs(companySlug = selectedCompanySlug) {
+    const accessToken = session?.access_token;
+    if (!accessToken || !companySlug) {
+      setChatLogs([]);
+      return;
+    }
+
+    try {
+      setChatLogs(await fetchChatLogs(accessToken, companySlug));
+    } catch {
+      setChatLogs([]);
+    }
+  }
+
   useEffect(() => {
     if (!supabase) {
       return;
@@ -195,6 +247,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
         setCompanies([]);
         setDocuments([]);
         setLeads([]);
+        setChatLogs([]);
       }
     });
 
@@ -224,6 +277,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
           setNotificationEmail(initialCompany?.notificationEmail ?? "");
           setDocuments(await fetchDocuments(accessToken, nextSlug));
           setLeads(await fetchLeads(accessToken, nextSlug));
+          setChatLogs(await fetchChatLogs(accessToken, nextSlug));
         }
       })
       .catch(() => {
@@ -231,6 +285,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
           setCompanies([]);
           setDocuments([]);
           setLeads([]);
+          setChatLogs([]);
         }
       });
 
@@ -252,12 +307,14 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
         if (!ignore) {
           setDocuments(nextDocuments);
           setLeads(await fetchLeads(accessToken, selectedCompanySlug));
+          setChatLogs(await fetchChatLogs(accessToken, selectedCompanySlug));
         }
       })
       .catch(() => {
         if (!ignore) {
           setDocuments([]);
           setLeads([]);
+          setChatLogs([]);
         }
       });
 
@@ -307,6 +364,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
     setCompanies([]);
     setDocuments([]);
     setLeads([]);
+    setChatLogs([]);
     setCompanyStatus(null);
     setUploadStatus(null);
     setAuthStatus("Logged out.");
@@ -352,6 +410,7 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
       await refreshCompanies();
       await refreshDocuments(body.company.slug);
       await refreshLeads(body.company.slug);
+      await refreshChatLogs(body.company.slug);
     } catch (caughtError) {
       setCompanyStatus(
         caughtError instanceof Error
@@ -684,6 +743,50 @@ export function Admin({ supabaseAnonKey, supabaseUrl }: AdminProps) {
           </ul>
         ) : (
           <span>No leads yet.</span>
+        )}
+      </div>
+
+      <div className="chat-log-list" aria-label="Recent chat logs">
+        <p>Chat Logs</p>
+        {chatLogs.length > 0 ? (
+          <ul>
+            {chatLogs.map((chatSession) => {
+              const isExpanded = expandedChatSessionId === chatSession.id;
+              const firstUserMessage = chatSession.messages.find(
+                (message) => message.role === "user"
+              );
+
+              return (
+                <li key={chatSession.id}>
+                  <button
+                    onClick={() =>
+                      setExpandedChatSessionId(isExpanded ? null : chatSession.id)
+                    }
+                    type="button"
+                  >
+                    <span>
+                      {firstUserMessage?.content ?? "No messages saved yet."}
+                    </span>
+                    <time dateTime={chatSession.updatedAt}>
+                      {new Date(chatSession.updatedAt).toLocaleString()}
+                    </time>
+                  </button>
+                  {isExpanded ? (
+                    <div className="chat-log-messages">
+                      {chatSession.messages.map((message) => (
+                        <article key={message.id}>
+                          <strong>{message.role}</strong>
+                          <span>{message.content}</span>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <span>No chat logs yet.</span>
         )}
       </div>
     </section>

@@ -43,6 +43,27 @@ create table if not exists leads (
   created_at timestamptz not null default now()
 );
 
+create table if not exists chat_sessions (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references companies(id) on delete cascade,
+  visitor_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (id, company_id)
+);
+
+create table if not exists chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references chat_sessions(id) on delete cascade,
+  company_id uuid not null references companies(id) on delete cascade,
+  role text not null,
+  content text not null,
+  created_at timestamptz not null default now(),
+  foreign key (session_id, company_id)
+    references chat_sessions(id, company_id)
+    on delete cascade
+);
+
 create index if not exists document_chunks_document_id_idx
   on document_chunks(document_id);
 
@@ -54,6 +75,12 @@ create index if not exists documents_company_id_idx
 
 create index if not exists leads_company_id_created_at_idx
   on leads(company_id, created_at desc);
+
+create index if not exists chat_sessions_company_updated_at_idx
+  on chat_sessions(company_id, updated_at desc);
+
+create index if not exists chat_messages_session_created_at_idx
+  on chat_messages(session_id, created_at);
 
 create index if not exists documents_created_at_idx
   on documents(created_at desc);

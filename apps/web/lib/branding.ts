@@ -8,8 +8,11 @@ export const branding = {
   accentColor: "#7DF9FF",
   adminTitle: "RoWorkLink Knowledge Base",
   suggestedQuestions: [
-    "Ce documente sunt necesare?",
-    "Cum pot aplica?",
-    "Care sunt pasii urmatori?"
+    "Cât costă implementarea?",
+    "Ce include abonamentul lunar?",
+    "Poate prelua cereri de programare?",
+    "Cum se instalează pe website?",
+    "Pentru ce tipuri de firme este potrivit?",
+    "Ce se întâmplă dacă nu știe răspunsul?"
   ]
 };
